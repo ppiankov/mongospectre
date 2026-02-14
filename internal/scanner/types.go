@@ -24,4 +24,5 @@ type ScanResult struct {
 	Refs         []CollectionRef `json:"refs"`
 	Collections  []string        `json:"collections"` // deduplicated collection names
 	FilesScanned int             `json:"filesScanned"`
+	FilesSkipped int             `json:"filesSkipped,omitempty"`
 }

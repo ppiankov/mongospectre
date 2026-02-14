@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/ppiankov/mongospectre/internal/analyzer"
 )
@@ -16,8 +17,19 @@ const (
 	FormatJSON Format = "json"
 )
 
+// Metadata holds context about how and when the report was generated.
+type Metadata struct {
+	Version        string `json:"version"`
+	Command        string `json:"command"`
+	Timestamp      string `json:"timestamp"`
+	Database       string `json:"database,omitempty"`
+	MongoDBVersion string `json:"mongodbVersion,omitempty"`
+	RepoPath       string `json:"repoPath,omitempty"`
+}
+
 // Report holds the structured audit output.
 type Report struct {
+	Metadata    Metadata           `json:"metadata"`
 	Findings    []analyzer.Finding `json:"findings"`
 	MaxSeverity analyzer.Severity  `json:"maxSeverity"`
 	Summary     Summary            `json:"summary"`
@@ -49,6 +61,9 @@ func NewReport(findings []analyzer.Finding) Report {
 		}
 	}
 	return Report{
+		Metadata: Metadata{
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+		},
 		Findings:    findings,
 		MaxSeverity: analyzer.MaxSeverity(findings),
 		Summary:     s,

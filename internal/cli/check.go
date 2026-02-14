@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/ppiankov/mongospectre/internal/analyzer"
 	mongoinspect "github.com/ppiankov/mongospectre/internal/mongo"
@@ -26,13 +25,13 @@ func newCheckCmd() *cobra.Command {
 		Short: "Compare code repo collection references against live MongoDB",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if uri == "" {
-				return fmt.Errorf("--uri is required")
+				return fmt.Errorf("--uri is required (or set MONGODB_URI)")
 			}
 			if repo == "" {
 				return fmt.Errorf("--repo is required")
 			}
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), 60*time.Second)
+			ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 			defer cancel()
 
 			// Scan code repo
@@ -44,7 +43,20 @@ func newCheckCmd() *cobra.Command {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Found %d collection references in %d files\n",
 				len(scan.Refs), scan.FilesScanned)
 
+			if verbose {
+				for _, c := range scan.Collections {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  collection: %s\n", c)
+				}
+				if scan.FilesSkipped > 0 {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  skipped %d unreadable files\n", scan.FilesSkipped)
+				}
+			}
+
 			// Connect to MongoDB
+			if verbose {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s (timeout %s)...\n", uri, timeout)
+			}
+
 			inspector, err := mongoinspect.NewInspector(ctx, mongoinspect.Config{
 				URI:      uri,
 				Database: database,
@@ -69,6 +81,13 @@ func newCheckCmd() *cobra.Command {
 			// Run diff
 			findings := analyzer.Diff(scan, collections)
 			report := reporter.NewReport(findings)
+			report.Metadata = reporter.Metadata{
+				Version:        version,
+				Command:        "check",
+				Database:       database,
+				MongoDBVersion: info.Version,
+				RepoPath:       repo,
+			}
 
 			if err := reporter.Write(cmd.OutOrStdout(), report, reporter.Format(format)); err != nil {
 				return fmt.Errorf("write report: %w", err)
@@ -92,7 +111,7 @@ func newCheckCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&repo, "repo", "", "path to code repository to scan")
 	cmd.Flags().StringVar(&database, "database", "", "specific database to check (default: all non-system)")
-	cmd.Flags().StringVar(&format, "format", "text", "output format: text or json")
+	cmd.Flags().StringVarP(&format, "format", "f", "text", "output format: text or json")
 	cmd.Flags().BoolVar(&failOnMissing, "fail-on-missing", false, "exit 2 if any MISSING_COLLECTION found")
 
 	return cmd

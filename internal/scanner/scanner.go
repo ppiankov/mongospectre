@@ -57,7 +57,8 @@ func Scan(repoPath string) (ScanResult, error) {
 
 		refs, scanErr := scanFile(path, repoPath)
 		if scanErr != nil {
-			return nil // skip unreadable files
+			result.FilesSkipped++
+			return nil
 		}
 
 		result.FilesScanned++

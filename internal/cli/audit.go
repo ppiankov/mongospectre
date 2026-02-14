@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/ppiankov/mongospectre/internal/analyzer"
 	mongoinspect "github.com/ppiankov/mongospectre/internal/mongo"
@@ -23,11 +22,15 @@ func newAuditCmd() *cobra.Command {
 		Short: "Audit MongoDB cluster for unused collections, indexes, and drift",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if uri == "" {
-				return fmt.Errorf("--uri is required")
+				return fmt.Errorf("--uri is required (or set MONGODB_URI)")
 			}
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 			defer cancel()
+
+			if verbose {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s (timeout %s)...\n", uri, timeout)
+			}
 
 			inspector, err := mongoinspect.NewInspector(ctx, mongoinspect.Config{
 				URI:      uri,
@@ -50,8 +53,21 @@ func newAuditCmd() *cobra.Command {
 			}
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Inspected %d collections\n", len(collections))
 
+			if verbose {
+				for _, c := range collections {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  %s.%s (%d docs, %d indexes)\n",
+						c.Database, c.Name, c.DocCount, len(c.Indexes))
+				}
+			}
+
 			findings := analyzer.Audit(collections)
 			report := reporter.NewReport(findings)
+			report.Metadata = reporter.Metadata{
+				Version:        version,
+				Command:        "audit",
+				Database:       database,
+				MongoDBVersion: info.Version,
+			}
 
 			if err := reporter.Write(cmd.OutOrStdout(), report, reporter.Format(format)); err != nil {
 				return fmt.Errorf("write report: %w", err)
@@ -66,7 +82,7 @@ func newAuditCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&database, "database", "", "specific database to audit (default: all non-system)")
-	cmd.Flags().StringVar(&format, "format", "text", "output format: text or json")
+	cmd.Flags().StringVarP(&format, "format", "f", "text", "output format: text or json")
 
 	return cmd
 }
