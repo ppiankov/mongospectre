@@ -20,10 +20,6 @@ formatters:
   enable:
     - gofmt
 
-run:
-  exclude-dirs:
-    - vendor
-
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
