@@ -75,9 +75,30 @@ func Write(w io.Writer, report Report, format Format) error {
 	switch format {
 	case FormatJSON:
 		return writeJSON(w, report)
+	case FormatSARIF:
+		return writeSARIF(w, report)
 	default:
 		return writeText(w, report)
 	}
+}
+
+// WriteBaselineDiff outputs a baseline comparison summary.
+func WriteBaselineDiff(w io.Writer, diff []analyzer.BaselineFinding) {
+	var newCount, resolvedCount, unchangedCount int
+	for _, f := range diff {
+		switch f.Status {
+		case analyzer.StatusNew:
+			newCount++
+			_, _ = fmt.Fprintf(w, "+ [%s] %s: %s\n", f.Status, f.Type, f.Message)
+		case analyzer.StatusResolved:
+			resolvedCount++
+			_, _ = fmt.Fprintf(w, "- [%s] %s: %s\n", f.Status, f.Type, f.Message)
+		default:
+			unchangedCount++
+		}
+	}
+	_, _ = fmt.Fprintf(w, "\nBaseline diff: %d new, %d resolved, %d unchanged\n\n",
+		newCount, resolvedCount, unchangedCount)
 }
 
 func writeJSON(w io.Writer, report Report) error {

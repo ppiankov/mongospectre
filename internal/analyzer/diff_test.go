@@ -194,3 +194,159 @@ func TestDiff_EmptyDB(t *testing.T) {
 		t.Errorf("expected 2 MISSING_COLLECTION, got %d", len(missing))
 	}
 }
+
+func TestDiff_UnindexedQuery(t *testing.T) {
+	scan := scanner.ScanResult{
+		Refs:        []scanner.CollectionRef{{Collection: "users", File: "app.go", Line: 1}},
+		Collections: []string{"users"},
+		FieldRefs: []scanner.FieldRef{
+			{Collection: "users", Field: "email", File: "app.go", Line: 10},
+			{Collection: "users", Field: "status", File: "app.go", Line: 15},
+			{Collection: "users", Field: "_id", File: "app.go", Line: 20}, // should be skipped
+		},
+	}
+	colls := []mongoinspect.CollectionInfo{
+		collInfo("users", "app", 100,
+			mongoinspect.IndexInfo{Name: "_id_", Key: kf("_id")},
+			idx("status_1", kf("status"), 50), // status is indexed
+		),
+	}
+
+	findings := Diff(scan, colls)
+
+	var unindexed []Finding
+	for _, f := range findings {
+		if f.Type == FindingUnindexedQuery {
+			unindexed = append(unindexed, f)
+		}
+	}
+	if len(unindexed) != 1 {
+		t.Fatalf("expected 1 UNINDEXED_QUERY, got %d: %v", len(unindexed), unindexed)
+	}
+	if unindexed[0].Collection != "users" {
+		t.Errorf("expected users, got %s", unindexed[0].Collection)
+	}
+	if unindexed[0].Severity != SeverityMedium {
+		t.Errorf("expected medium severity, got %s", unindexed[0].Severity)
+	}
+}
+
+func TestDiff_UnindexedQuery_AllIndexed(t *testing.T) {
+	scan := scanner.ScanResult{
+		Refs:        []scanner.CollectionRef{{Collection: "users", File: "app.go", Line: 1}},
+		Collections: []string{"users"},
+		FieldRefs: []scanner.FieldRef{
+			{Collection: "users", Field: "email", File: "app.go", Line: 10},
+		},
+	}
+	colls := []mongoinspect.CollectionInfo{
+		collInfo("users", "app", 100,
+			mongoinspect.IndexInfo{Name: "_id_", Key: kf("_id")},
+			idx("email_1", kf("email"), 50),
+		),
+	}
+
+	findings := Diff(scan, colls)
+
+	for _, f := range findings {
+		if f.Type == FindingUnindexedQuery {
+			t.Errorf("unexpected UNINDEXED_QUERY: %s", f.Message)
+		}
+	}
+}
+
+func TestDiff_SuggestIndex(t *testing.T) {
+	scan := scanner.ScanResult{
+		Refs:        []scanner.CollectionRef{{Collection: "orders", File: "app.go", Line: 1}},
+		Collections: []string{"orders"},
+		FieldRefs: []scanner.FieldRef{
+			{Collection: "orders", Field: "customer_id", File: "app.go", Line: 10},
+			{Collection: "orders", Field: "status", File: "app.go", Line: 15},
+		},
+	}
+	colls := []mongoinspect.CollectionInfo{
+		collInfo("orders", "app", 50000, // above suggestMinDocs
+			mongoinspect.IndexInfo{Name: "_id_", Key: kf("_id")},
+		),
+	}
+
+	findings := Diff(scan, colls)
+
+	var suggestions []Finding
+	for _, f := range findings {
+		if f.Type == FindingSuggestIndex {
+			suggestions = append(suggestions, f)
+		}
+	}
+	if len(suggestions) != 2 {
+		t.Fatalf("expected 2 SUGGEST_INDEX, got %d: %v", len(suggestions), suggestions)
+	}
+}
+
+func TestDiff_SuggestIndex_SkipsSmallCollections(t *testing.T) {
+	scan := scanner.ScanResult{
+		Refs:        []scanner.CollectionRef{{Collection: "small", File: "app.go", Line: 1}},
+		Collections: []string{"small"},
+		FieldRefs: []scanner.FieldRef{
+			{Collection: "small", Field: "status", File: "app.go", Line: 10},
+		},
+	}
+	colls := []mongoinspect.CollectionInfo{
+		collInfo("small", "app", 50, // below suggestMinDocs
+			mongoinspect.IndexInfo{Name: "_id_", Key: kf("_id")},
+		),
+	}
+
+	findings := Diff(scan, colls)
+
+	for _, f := range findings {
+		if f.Type == FindingSuggestIndex {
+			t.Error("should not suggest indexes for small collections")
+		}
+	}
+}
+
+func TestDiff_SuggestIndex_SkipsIndexedFields(t *testing.T) {
+	scan := scanner.ScanResult{
+		Refs:        []scanner.CollectionRef{{Collection: "users", File: "app.go", Line: 1}},
+		Collections: []string{"users"},
+		FieldRefs: []scanner.FieldRef{
+			{Collection: "users", Field: "email", File: "app.go", Line: 10},
+		},
+	}
+	colls := []mongoinspect.CollectionInfo{
+		collInfo("users", "app", 5000,
+			mongoinspect.IndexInfo{Name: "_id_", Key: kf("_id")},
+			idx("email_1", kf("email"), 50),
+		),
+	}
+
+	findings := Diff(scan, colls)
+
+	for _, f := range findings {
+		if f.Type == FindingSuggestIndex {
+			t.Errorf("should not suggest index for already-indexed field: %s", f.Message)
+		}
+	}
+}
+
+func TestDiff_UnindexedQuery_MissingCollection(t *testing.T) {
+	// Field refs on a collection that doesn't exist in DB should not produce
+	// UNINDEXED_QUERY (already reported as MISSING_COLLECTION).
+	scan := scanner.ScanResult{
+		Refs:        []scanner.CollectionRef{{Collection: "orders", File: "app.go", Line: 1}},
+		Collections: []string{"orders"},
+		FieldRefs: []scanner.FieldRef{
+			{Collection: "orders", Field: "status", File: "app.go", Line: 10},
+		},
+	}
+	var colls []mongoinspect.CollectionInfo
+
+	findings := Diff(scan, colls)
+
+	for _, f := range findings {
+		if f.Type == FindingUnindexedQuery {
+			t.Error("should not report UNINDEXED_QUERY for missing collection")
+		}
+	}
+}
