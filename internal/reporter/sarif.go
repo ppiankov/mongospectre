@@ -88,7 +88,7 @@ var sarifRules = map[analyzer.FindingType]sarifReportingDescriptor{
 	analyzer.FindingOK:                  {ID: "OK", ShortDescription: sarifMessage{Text: "Collection exists and is referenced"}, DefaultConfig: sarifDefaultConfig{Level: "none"}},
 }
 
-func writeSARIF(w io.Writer, report Report) error {
+func writeSARIF(w io.Writer, report *Report) error {
 	// Collect unique rules used in findings.
 	usedRules := make(map[analyzer.FindingType]bool)
 	for _, f := range report.Findings {
@@ -113,7 +113,7 @@ func writeSARIF(w io.Writer, report Report) error {
 		// Add logical location (database.collection).
 		loc := sarifLocation{
 			LogicalLocations: []sarifLogicalLocation{{
-				FullyQualifiedName: logicalName(f),
+				FullyQualifiedName: logicalName(&f),
 				Kind:               "object",
 			}},
 		}
@@ -155,7 +155,7 @@ func severityToSARIFLevel(s analyzer.Severity) string {
 	}
 }
 
-func logicalName(f analyzer.Finding) string {
+func logicalName(f *analyzer.Finding) string {
 	name := f.Database + "." + f.Collection
 	if f.Index != "" {
 		name += "." + f.Index

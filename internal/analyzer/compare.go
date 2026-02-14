@@ -75,7 +75,7 @@ func Compare(source, target []mongoinspect.CollectionInfo) []CompareFinding {
 }
 
 // compareIndexes checks for index differences between two copies of the same collection.
-func compareIndexes(source, target mongoinspect.CollectionInfo) []CompareFinding {
+func compareIndexes(source, target *mongoinspect.CollectionInfo) []CompareFinding {
 	sourceIdx := indexSetByName(source.Indexes)
 	targetIdx := indexSetByName(target.Indexes)
 
@@ -135,10 +135,10 @@ func compareIndexes(source, target mongoinspect.CollectionInfo) []CompareFinding
 	return findings
 }
 
-func indexByName(colls []mongoinspect.CollectionInfo) map[string]mongoinspect.CollectionInfo {
-	m := make(map[string]mongoinspect.CollectionInfo)
-	for _, c := range colls {
-		m[strings.ToLower(c.Name)] = c
+func indexByName(colls []mongoinspect.CollectionInfo) map[string]*mongoinspect.CollectionInfo {
+	m := make(map[string]*mongoinspect.CollectionInfo)
+	for i := range colls {
+		m[strings.ToLower(colls[i].Name)] = &colls[i]
 	}
 	return m
 }

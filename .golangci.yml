@@ -8,21 +8,22 @@ linters:
     - staticcheck
     - unused
     - gocritic
+  settings:
+    errcheck:
+      check-type-assertions: false
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
 
 formatters:
   enable:
     - gofmt
 
-linters-settings:
-  errcheck:
-    check-type-assertions: false
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - performance
-
-issues:
+run:
   exclude-dirs:
     - vendor
+
+issues:
   max-issues-per-linter: 0
   max-same-issues: 0

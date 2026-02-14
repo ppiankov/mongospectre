@@ -52,7 +52,7 @@ func TestDetectUnusedCollection(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := detectUnusedCollection(tt.coll)
+			got := detectUnusedCollection(&tt.coll)
 			if len(got) != tt.count {
 				t.Errorf("expected %d findings, got %d", tt.count, len(got))
 			}
@@ -73,7 +73,7 @@ func TestDetectUnusedIndexes(t *testing.T) {
 			idx("name_1", kf("name"), 50),
 		},
 	}
-	findings := detectUnusedIndexes(coll)
+	findings := detectUnusedIndexes(&coll)
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(findings))
 	}
@@ -90,7 +90,7 @@ func TestDetectUnusedIndexes_SkipsID(t *testing.T) {
 			idx("_id_", kf("_id"), 0),
 		},
 	}
-	if findings := detectUnusedIndexes(coll); len(findings) != 0 {
+	if findings := detectUnusedIndexes(&coll); len(findings) != 0 {
 		t.Errorf("_id_ should be skipped, got %d findings", len(findings))
 	}
 }
@@ -135,7 +135,7 @@ func TestDetectMissingIndexes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := detectMissingIndexes(tt.coll)
+			got := detectMissingIndexes(&tt.coll)
 			if len(got) != tt.count {
 				t.Errorf("expected %d findings, got %d", tt.count, len(got))
 			}
@@ -153,7 +153,7 @@ func TestDetectDuplicateIndexes(t *testing.T) {
 			{Name: "status_1_date_1", Key: kf("status", "date")},
 		},
 	}
-	findings := detectDuplicateIndexes(coll)
+	findings := detectDuplicateIndexes(&coll)
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 duplicate finding, got %d", len(findings))
 	}
@@ -172,19 +172,19 @@ func TestDetectDuplicateIndexes_NoDuplicates(t *testing.T) {
 			{Name: "category_1", Key: kf("category")},
 		},
 	}
-	if findings := detectDuplicateIndexes(coll); len(findings) != 0 {
+	if findings := detectDuplicateIndexes(&coll); len(findings) != 0 {
 		t.Errorf("expected 0 findings, got %d", len(findings))
 	}
 }
 
 func TestDetectOversizedCollection(t *testing.T) {
 	small := mongoinspect.CollectionInfo{Name: "small", Database: "db", StorageSize: 1024}
-	if findings := detectOversizedCollection(small); len(findings) != 0 {
+	if findings := detectOversizedCollection(&small); len(findings) != 0 {
 		t.Errorf("expected 0, got %d", len(findings))
 	}
 
 	big := mongoinspect.CollectionInfo{Name: "big", Database: "db", StorageSize: 15 * 1024 * 1024 * 1024}
-	findings := detectOversizedCollection(big)
+	findings := detectOversizedCollection(&big)
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(findings))
 	}
@@ -201,7 +201,7 @@ func TestDetectMissingTTL(t *testing.T) {
 			{Name: "createdAt_1", Key: kf("createdAt")},
 		},
 	}
-	findings := detectMissingTTL(coll)
+	findings := detectMissingTTL(&coll)
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(findings))
 	}
@@ -218,7 +218,7 @@ func TestDetectMissingTTL_HasTTL(t *testing.T) {
 			idxTTL("createdAt_1", kf("createdAt"), 3600),
 		},
 	}
-	if findings := detectMissingTTL(coll); len(findings) != 0 {
+	if findings := detectMissingTTL(&coll); len(findings) != 0 {
 		t.Errorf("expected 0 (TTL exists), got %d", len(findings))
 	}
 }

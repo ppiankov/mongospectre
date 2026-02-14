@@ -77,7 +77,7 @@ func Load(dir string) (Config, error) {
 
 // TimeoutDuration parses the Defaults.Timeout string as a time.Duration.
 // Returns 30s if parsing fails.
-func (c Config) TimeoutDuration() time.Duration {
+func (c *Config) TimeoutDuration() time.Duration {
 	if c.Defaults.Timeout == "" {
 		return 30 * time.Second
 	}
