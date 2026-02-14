@@ -20,6 +20,9 @@ const (
 	FindingDuplicateIndex      FindingType = "DUPLICATE_INDEX"
 	FindingOversizedCollection FindingType = "OVERSIZED_COLLECTION"
 	FindingMissingTTL          FindingType = "MISSING_TTL"
+	FindingMissingCollection   FindingType = "MISSING_COLLECTION"
+	FindingOrphanedIndex       FindingType = "ORPHANED_INDEX"
+	FindingOK                  FindingType = "OK"
 )
 
 // Finding represents a single audit detection result.
