@@ -41,15 +41,43 @@ func ScanLine(line string) []match {
 	for _, p := range collectionPatterns {
 		for _, m := range p.re.FindAllStringSubmatch(line, -1) {
 			name := m[p.group]
-			if isValidCollectionName(name) {
-				matches = append(matches, match{
-					Collection: name,
-					Pattern:    p.patType,
-				})
+			if !isValidCollectionName(name) {
+				continue
+			}
+			matches = append(matches, match{
+				Collection: name,
+				Pattern:    p.patType,
+			})
+			// Mongoose models use PascalCase but create lowercase plural collections.
+			// Emit the likely collection name so diff doesn't produce false positives.
+			if p.patType == PatternORM && name != strings.ToLower(name) {
+				plural := mongoosePluralize(name)
+				if plural != name {
+					matches = append(matches, match{
+						Collection: plural,
+						Pattern:    p.patType,
+					})
+				}
 			}
 		}
 	}
 	return dedupMatches(matches)
+}
+
+// mongoosePluralize applies Mongoose's default collection naming:
+// lowercase + naive English plural ("User" -> "users").
+func mongoosePluralize(model string) string {
+	lower := strings.ToLower(model)
+	switch {
+	case strings.HasSuffix(lower, "ss"), strings.HasSuffix(lower, "sh"),
+		strings.HasSuffix(lower, "ch"), strings.HasSuffix(lower, "x"):
+		return lower + "es"
+	case strings.HasSuffix(lower, "y") && len(lower) > 1 &&
+		!strings.ContainsAny(string(lower[len(lower)-2]), "aeiou"):
+		return lower[:len(lower)-1] + "ies"
+	default:
+		return lower + "s"
+	}
 }
 
 type match struct {

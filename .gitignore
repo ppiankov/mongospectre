@@ -3,3 +3,20 @@ dist/
 staging/
 *.exe
 
+# Coverage
+*.out
+
+# OS
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.*
+

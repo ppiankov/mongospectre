@@ -22,8 +22,19 @@ type Inspector struct {
 }
 
 // NewInspector connects to MongoDB and verifies the connection.
+// The context deadline is used to bound connection and server selection time.
 func NewInspector(ctx context.Context, cfg Config) (*Inspector, error) {
-	client, err := mongo.Connect(options.Client().ApplyURI(cfg.URI))
+	opts := options.Client().ApplyURI(cfg.URI)
+
+	// Derive connection timeouts from context deadline so unreachable hosts
+	// don't hang for the OS-level TCP timeout (~2 min).
+	if deadline, ok := ctx.Deadline(); ok {
+		d := time.Until(deadline)
+		opts.SetConnectTimeout(d)
+		opts.SetServerSelectionTimeout(d)
+	}
+
+	client, err := mongo.Connect(opts)
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
 	}
