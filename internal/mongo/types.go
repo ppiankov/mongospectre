@@ -27,14 +27,20 @@ type CollectionInfo struct {
 	Indexes     []IndexInfo `json:"indexes"`
 }
 
+// KeyField is an ordered index key element.
+type KeyField struct {
+	Field     string `json:"field"`
+	Direction int    `json:"direction"` // 1 (asc) or -1 (desc)
+}
+
 // IndexInfo describes a single index on a collection.
 type IndexInfo struct {
-	Name   string         `json:"name"`
-	Key    map[string]int `json:"key"` // field -> direction (1 or -1)
-	Unique bool           `json:"unique,omitempty"`
-	Sparse bool           `json:"sparse,omitempty"`
-	TTL    *int32         `json:"ttl,omitempty"` // TTL seconds, nil if not a TTL index
-	Stats  *IndexStats    `json:"stats,omitempty"`
+	Name   string      `json:"name"`
+	Key    []KeyField  `json:"key"`
+	Unique bool        `json:"unique,omitempty"`
+	Sparse bool        `json:"sparse,omitempty"`
+	TTL    *int32      `json:"ttl,omitempty"` // TTL seconds, nil if not a TTL index
+	Stats  *IndexStats `json:"stats,omitempty"`
 }
 
 // IndexStats holds usage statistics for an index.

@@ -42,39 +42,39 @@ func TestToTime(t *testing.T) {
 	}
 }
 
-func TestBsonDToKeyMap(t *testing.T) {
+func TestBsonRawToKeyFields(t *testing.T) {
 	raw, err := bson.Marshal(bson.D{{Key: "name", Value: 1}, {Key: "age", Value: -1}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := bsonDToKeyMap(raw)
+	fields := bsonRawToKeyFields(raw)
 
-	if len(m) != 2 {
-		t.Fatalf("expected 2 keys, got %d", len(m))
+	if len(fields) != 2 {
+		t.Fatalf("expected 2 fields, got %d", len(fields))
 	}
-	if m["name"] != 1 {
-		t.Errorf("name = %d, want 1", m["name"])
+	if fields[0].Field != "name" || fields[0].Direction != 1 {
+		t.Errorf("fields[0] = %+v, want {name, 1}", fields[0])
 	}
-	if m["age"] != -1 {
-		t.Errorf("age = %d, want -1", m["age"])
+	if fields[1].Field != "age" || fields[1].Direction != -1 {
+		t.Errorf("fields[1] = %+v, want {age, -1}", fields[1])
 	}
 }
 
-func TestBsonDToKeyMap_Empty(t *testing.T) {
+func TestBsonRawToKeyFields_Empty(t *testing.T) {
 	raw, err := bson.Marshal(bson.D{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := bsonDToKeyMap(raw)
-	if len(m) != 0 {
-		t.Errorf("expected empty map, got %v", m)
+	fields := bsonRawToKeyFields(raw)
+	if len(fields) != 0 {
+		t.Errorf("expected empty slice, got %v", fields)
 	}
 }
 
-func TestBsonDToKeyMap_Invalid(t *testing.T) {
-	m := bsonDToKeyMap(bson.Raw{0xFF})
-	if m != nil {
-		t.Errorf("expected nil for invalid raw, got %v", m)
+func TestBsonRawToKeyFields_Invalid(t *testing.T) {
+	fields := bsonRawToKeyFields(bson.Raw{0xFF})
+	if fields != nil {
+		t.Errorf("expected nil for invalid raw, got %v", fields)
 	}
 }
 
@@ -90,9 +90,7 @@ func TestSystemDBs(t *testing.T) {
 }
 
 func TestListDatabases_SpecificDB(t *testing.T) {
-	// When a specific database is provided, ListDatabases should return it directly
-	// without needing a real connection. We test the logic, not the MongoDB call.
-	insp := &Inspector{} // nil client is fine — we won't hit MongoDB
+	insp := &Inspector{}
 	dbs, err := insp.ListDatabases(nil, "mydb")
 	if err != nil {
 		t.Fatal(err)

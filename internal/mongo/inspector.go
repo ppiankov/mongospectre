@@ -117,7 +117,7 @@ func (i *Inspector) GetIndexes(ctx context.Context, dbName, collName string) ([]
 	for _, spec := range specs {
 		idx := IndexInfo{
 			Name: spec.Name,
-			Key:  bsonDToKeyMap(spec.KeysDocument),
+			Key:  bsonRawToKeyFields(spec.KeysDocument),
 		}
 		if spec.Unique != nil {
 			idx.Unique = *spec.Unique
@@ -246,15 +246,18 @@ func toTime(v any) time.Time {
 	return time.Time{}
 }
 
-// bsonDToKeyMap converts a bson.Raw key document to map[string]int.
-func bsonDToKeyMap(raw bson.Raw) map[string]int {
+// bsonRawToKeyFields converts a bson.Raw key document to ordered []KeyField.
+func bsonRawToKeyFields(raw bson.Raw) []KeyField {
 	elems, err := raw.Elements()
 	if err != nil {
 		return nil
 	}
-	m := make(map[string]int, len(elems))
+	fields := make([]KeyField, 0, len(elems))
 	for _, elem := range elems {
-		m[elem.Key()] = int(elem.Value().AsInt64())
+		fields = append(fields, KeyField{
+			Field:     elem.Key(),
+			Direction: int(elem.Value().AsInt64()),
+		})
 	}
-	return m
+	return fields
 }
