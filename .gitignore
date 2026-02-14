@@ -1,3 +1,7 @@
+bin/
+dist/
+staging/
+*.exe
 
 # Claude Code
 .claude/
