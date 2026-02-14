@@ -1,0 +1,27 @@
+package scanner
+
+// PatternType identifies how a collection reference was detected.
+type PatternType string
+
+const (
+	PatternDriverCall PatternType = "driver_call" // db.Collection("x"), db.collection("x"), etc.
+	PatternBracket    PatternType = "bracket"     // db["x"]
+	PatternORM        PatternType = "orm"         // mongoose.model, MongoEngine
+	PatternDotAccess  PatternType = "dot_access"  // db.users.find(...)
+)
+
+// CollectionRef represents a collection name found in source code.
+type CollectionRef struct {
+	Collection string      `json:"collection"`
+	File       string      `json:"file"`
+	Line       int         `json:"line"`
+	Pattern    PatternType `json:"pattern"`
+}
+
+// ScanResult holds all collection references found in a repository.
+type ScanResult struct {
+	RepoPath     string          `json:"repoPath"`
+	Refs         []CollectionRef `json:"refs"`
+	Collections  []string        `json:"collections"` // deduplicated collection names
+	FilesScanned int             `json:"filesScanned"`
+}
