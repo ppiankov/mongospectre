@@ -56,7 +56,7 @@ func TestNewReport_Empty(t *testing.T) {
 func TestWriteText(t *testing.T) {
 	r := NewReport(testFindings)
 	var buf bytes.Buffer
-	if err := Write(&buf, r, FormatText); err != nil {
+	if err := Write(&buf, &r, FormatText); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
@@ -78,7 +78,7 @@ func TestWriteText(t *testing.T) {
 func TestWriteText_Empty(t *testing.T) {
 	r := NewReport(nil)
 	var buf bytes.Buffer
-	if err := Write(&buf, r, FormatText); err != nil {
+	if err := Write(&buf, &r, FormatText); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(buf.String(), "No findings.") {
@@ -111,7 +111,7 @@ func TestWriteText_AllSeverities(t *testing.T) {
 	}
 	r := NewReport(findings)
 	var buf bytes.Buffer
-	if err := Write(&buf, r, FormatText); err != nil {
+	if err := Write(&buf, &r, FormatText); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
@@ -125,7 +125,7 @@ func TestWriteText_AllSeverities(t *testing.T) {
 func TestWriteJSON(t *testing.T) {
 	r := NewReport(testFindings)
 	var buf bytes.Buffer
-	if err := Write(&buf, r, FormatJSON); err != nil {
+	if err := Write(&buf, &r, FormatJSON); err != nil {
 		t.Fatal(err)
 	}
 
@@ -145,7 +145,7 @@ func TestWriteSARIF(t *testing.T) {
 	r := NewReport(testFindings)
 	r.Metadata.Version = "0.2.0"
 	var buf bytes.Buffer
-	if err := Write(&buf, r, FormatSARIF); err != nil {
+	if err := Write(&buf, &r, FormatSARIF); err != nil {
 		t.Fatal(err)
 	}
 
@@ -188,7 +188,7 @@ func TestWriteSARIF(t *testing.T) {
 func TestWriteSARIF_Empty(t *testing.T) {
 	r := NewReport(nil)
 	var buf bytes.Buffer
-	if err := Write(&buf, r, FormatSARIF); err != nil {
+	if err := Write(&buf, &r, FormatSARIF); err != nil {
 		t.Fatal(err)
 	}
 	var log sarifLog

@@ -86,11 +86,11 @@ func (i *Inspector) ListCollections(ctx context.Context, dbName string) ([]Colle
 	}
 
 	colls := make([]CollectionInfo, 0, len(specs))
-	for _, spec := range specs {
+	for i := range specs {
 		colls = append(colls, CollectionInfo{
-			Name:     spec.Name,
+			Name:     specs[i].Name,
 			Database: dbName,
-			Type:     spec.Type,
+			Type:     specs[i].Type,
 		})
 	}
 	return colls, nil

@@ -33,7 +33,7 @@ func TestDiff_MissingCollection(t *testing.T) {
 		collInfo("users", "app", 100),
 	}
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	var missing []Finding
 	for _, f := range findings {
@@ -59,7 +59,7 @@ func TestDiff_UnusedCollection(t *testing.T) {
 		collInfo("legacy", "app", 0),
 	}
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	var unused []Finding
 	for _, f := range findings {
@@ -82,7 +82,7 @@ func TestDiff_UnusedCollection_SkipsNonEmpty(t *testing.T) {
 		collInfo("active_but_unreferenced", "app", 5000),
 	}
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	for _, f := range findings {
 		if f.Type == FindingUnusedCollection && f.Collection == "active_but_unreferenced" {
@@ -101,7 +101,7 @@ func TestDiff_OrphanedIndex(t *testing.T) {
 		),
 	}
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	var orphaned []Finding
 	for _, f := range findings {
@@ -124,7 +124,7 @@ func TestDiff_OK(t *testing.T) {
 		collInfo("orders", "app", 200),
 	}
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	var ok []Finding
 	for _, f := range findings {
@@ -143,7 +143,7 @@ func TestDiff_CaseInsensitive(t *testing.T) {
 		collInfo("users", "app", 100),
 	}
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	for _, f := range findings {
 		if f.Type == FindingMissingCollection {
@@ -168,7 +168,7 @@ func TestDiff_EmptyCode(t *testing.T) {
 		collInfo("users", "app", 100),
 	}
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	// No MISSING_COLLECTION (nothing referenced in code)
 	for _, f := range findings {
@@ -182,7 +182,7 @@ func TestDiff_EmptyDB(t *testing.T) {
 	scan := scanResult("users", "orders")
 	var colls []mongoinspect.CollectionInfo
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	var missing []Finding
 	for _, f := range findings {
@@ -212,7 +212,7 @@ func TestDiff_UnindexedQuery(t *testing.T) {
 		),
 	}
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	var unindexed []Finding
 	for _, f := range findings {
@@ -246,7 +246,7 @@ func TestDiff_UnindexedQuery_AllIndexed(t *testing.T) {
 		),
 	}
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	for _, f := range findings {
 		if f.Type == FindingUnindexedQuery {
@@ -270,7 +270,7 @@ func TestDiff_SuggestIndex(t *testing.T) {
 		),
 	}
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	var suggestions []Finding
 	for _, f := range findings {
@@ -297,7 +297,7 @@ func TestDiff_SuggestIndex_SkipsSmallCollections(t *testing.T) {
 		),
 	}
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	for _, f := range findings {
 		if f.Type == FindingSuggestIndex {
@@ -321,7 +321,7 @@ func TestDiff_SuggestIndex_SkipsIndexedFields(t *testing.T) {
 		),
 	}
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	for _, f := range findings {
 		if f.Type == FindingSuggestIndex {
@@ -342,7 +342,7 @@ func TestDiff_UnindexedQuery_MissingCollection(t *testing.T) {
 	}
 	var colls []mongoinspect.CollectionInfo
 
-	findings := Diff(scan, colls)
+	findings := Diff(&scan, colls)
 
 	for _, f := range findings {
 		if f.Type == FindingUnindexedQuery {

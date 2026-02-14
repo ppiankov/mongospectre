@@ -71,7 +71,7 @@ func NewReport(findings []analyzer.Finding) Report {
 }
 
 // Write outputs the report in the given format.
-func Write(w io.Writer, report Report, format Format) error {
+func Write(w io.Writer, report *Report, format Format) error {
 	switch format {
 	case FormatJSON:
 		return writeJSON(w, report)
@@ -101,13 +101,13 @@ func WriteBaselineDiff(w io.Writer, diff []analyzer.BaselineFinding) {
 		newCount, resolvedCount, unchangedCount)
 }
 
-func writeJSON(w io.Writer, report Report) error {
+func writeJSON(w io.Writer, report *Report) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(report)
 }
 
-func writeText(w io.Writer, report Report) error {
+func writeText(w io.Writer, report *Report) error {
 	if report.Summary.Total == 0 {
 		_, err := fmt.Fprintln(w, "No findings.")
 		return err

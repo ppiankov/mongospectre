@@ -22,18 +22,18 @@ const (
 func Audit(collections []mongoinspect.CollectionInfo) []Finding {
 	var findings []Finding
 	for _, c := range collections {
-		findings = append(findings, detectUnusedCollection(c)...)
-		findings = append(findings, detectUnusedIndexes(c)...)
-		findings = append(findings, detectMissingIndexes(c)...)
-		findings = append(findings, detectDuplicateIndexes(c)...)
-		findings = append(findings, detectOversizedCollection(c)...)
-		findings = append(findings, detectMissingTTL(c)...)
+		findings = append(findings, detectUnusedCollection(&c)...)
+		findings = append(findings, detectUnusedIndexes(&c)...)
+		findings = append(findings, detectMissingIndexes(&c)...)
+		findings = append(findings, detectDuplicateIndexes(&c)...)
+		findings = append(findings, detectOversizedCollection(&c)...)
+		findings = append(findings, detectMissingTTL(&c)...)
 	}
 	return findings
 }
 
 // detectUnusedCollection flags collections with zero documents.
-func detectUnusedCollection(c mongoinspect.CollectionInfo) []Finding {
+func detectUnusedCollection(c *mongoinspect.CollectionInfo) []Finding {
 	if c.Type == "view" || c.DocCount > 0 {
 		return nil
 	}
@@ -47,7 +47,7 @@ func detectUnusedCollection(c mongoinspect.CollectionInfo) []Finding {
 }
 
 // detectUnusedIndexes flags indexes with zero operations (excluding _id).
-func detectUnusedIndexes(c mongoinspect.CollectionInfo) []Finding {
+func detectUnusedIndexes(c *mongoinspect.CollectionInfo) []Finding {
 	var findings []Finding
 	for _, idx := range c.Indexes {
 		if idx.Name == "_id_" {
@@ -68,7 +68,7 @@ func detectUnusedIndexes(c mongoinspect.CollectionInfo) []Finding {
 }
 
 // detectMissingIndexes flags collections with high doc count but only the _id index.
-func detectMissingIndexes(c mongoinspect.CollectionInfo) []Finding {
+func detectMissingIndexes(c *mongoinspect.CollectionInfo) []Finding {
 	if c.DocCount < missingIndexThreshold {
 		return nil
 	}
@@ -91,7 +91,7 @@ func detectMissingIndexes(c mongoinspect.CollectionInfo) []Finding {
 }
 
 // detectDuplicateIndexes flags indexes whose key pattern is a prefix of another.
-func detectDuplicateIndexes(c mongoinspect.CollectionInfo) []Finding {
+func detectDuplicateIndexes(c *mongoinspect.CollectionInfo) []Finding {
 	var findings []Finding
 	for i, a := range c.Indexes {
 		for j, b := range c.Indexes {
@@ -114,7 +114,7 @@ func detectDuplicateIndexes(c mongoinspect.CollectionInfo) []Finding {
 }
 
 // detectOversizedCollection flags collections exceeding the size threshold.
-func detectOversizedCollection(c mongoinspect.CollectionInfo) []Finding {
+func detectOversizedCollection(c *mongoinspect.CollectionInfo) []Finding {
 	if c.StorageSize < oversizedThreshold {
 		return nil
 	}
@@ -129,7 +129,7 @@ func detectOversizedCollection(c mongoinspect.CollectionInfo) []Finding {
 }
 
 // detectMissingTTL flags indexes on common timestamp fields that lack a TTL.
-func detectMissingTTL(c mongoinspect.CollectionInfo) []Finding {
+func detectMissingTTL(c *mongoinspect.CollectionInfo) []Finding {
 	hints := strings.Split(timestampFieldHint, ",")
 	hintSet := make(map[string]bool, len(hints))
 	for _, h := range hints {

@@ -57,7 +57,7 @@ func TestIgnoreRule_Matches(t *testing.T) {
 		{"db glob", IgnoreRule{Type: "*", Database: "app*", Collection: "*"}, true},
 	}
 	for _, tt := range tests {
-		got := tt.rule.Matches(finding)
+		got := tt.rule.Matches(&finding)
 		if got != tt.want {
 			t.Errorf("%s: Matches = %v, want %v", tt.name, got, tt.want)
 		}
