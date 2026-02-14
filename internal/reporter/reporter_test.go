@@ -86,6 +86,42 @@ func TestWriteText_Empty(t *testing.T) {
 	}
 }
 
+func TestNewReport_AllSeverities(t *testing.T) {
+	findings := []analyzer.Finding{
+		{Severity: analyzer.SeverityHigh},
+		{Severity: analyzer.SeverityMedium},
+		{Severity: analyzer.SeverityLow},
+		{Severity: analyzer.SeverityInfo},
+	}
+	r := NewReport(findings)
+	if r.Summary.Total != 4 {
+		t.Errorf("total = %d, want 4", r.Summary.Total)
+	}
+	if r.Summary.High != 1 || r.Summary.Medium != 1 || r.Summary.Low != 1 || r.Summary.Info != 1 {
+		t.Errorf("summary = %+v, want 1 each", r.Summary)
+	}
+}
+
+func TestWriteText_AllSeverities(t *testing.T) {
+	findings := []analyzer.Finding{
+		{Type: analyzer.FindingMissingIndex, Severity: analyzer.SeverityHigh, Database: "db", Collection: "c", Message: "high"},
+		{Type: analyzer.FindingUnusedIndex, Severity: analyzer.SeverityMedium, Database: "db", Collection: "c", Message: "med"},
+		{Type: analyzer.FindingMissingTTL, Severity: analyzer.SeverityLow, Database: "db", Collection: "c", Message: "low"},
+		{Type: analyzer.FindingOK, Severity: analyzer.SeverityInfo, Database: "db", Collection: "c", Message: "info"},
+	}
+	r := NewReport(findings)
+	var buf bytes.Buffer
+	if err := Write(&buf, r, FormatText); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, label := range []string{"[HIGH]", "[MEDIUM]", "[LOW]", "[INFO]"} {
+		if !strings.Contains(out, label) {
+			t.Errorf("missing %s in output", label)
+		}
+	}
+}
+
 func TestWriteJSON(t *testing.T) {
 	r := NewReport(testFindings)
 	var buf bytes.Buffer

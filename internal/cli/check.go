@@ -36,12 +36,12 @@ func newCheckCmd() *cobra.Command {
 			defer cancel()
 
 			// Scan code repo
-			fmt.Fprintf(cmd.ErrOrStderr(), "Scanning repo %s...\n", repo)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Scanning repo %s...\n", repo)
 			scan, err := scanner.Scan(repo)
 			if err != nil {
 				return fmt.Errorf("scan repo: %w", err)
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "Found %d collection references in %d files\n",
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Found %d collection references in %d files\n",
 				len(scan.Refs), scan.FilesScanned)
 
 			// Connect to MongoDB
@@ -52,19 +52,19 @@ func newCheckCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("connect: %w", err)
 			}
-			defer inspector.Close(ctx)
+			defer func() { _ = inspector.Close(ctx) }()
 
 			info, err := inspector.GetServerVersion(ctx)
 			if err != nil {
 				return fmt.Errorf("server info: %w", err)
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "Connected to MongoDB %s\n", info.Version)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Connected to MongoDB %s\n", info.Version)
 
 			collections, err := inspector.Inspect(ctx, database)
 			if err != nil {
 				return fmt.Errorf("inspect: %w", err)
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "Inspected %d collections\n", len(collections))
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Inspected %d collections\n", len(collections))
 
 			// Run diff
 			findings := analyzer.Diff(scan, collections)

@@ -36,19 +36,19 @@ func newAuditCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("connect: %w", err)
 			}
-			defer inspector.Close(ctx)
+			defer func() { _ = inspector.Close(ctx) }()
 
 			info, err := inspector.GetServerVersion(ctx)
 			if err != nil {
 				return fmt.Errorf("server info: %w", err)
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "Connected to MongoDB %s\n", info.Version)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Connected to MongoDB %s\n", info.Version)
 
 			collections, err := inspector.Inspect(ctx, database)
 			if err != nil {
 				return fmt.Errorf("inspect: %w", err)
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "Inspected %d collections\n", len(collections))
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Inspected %d collections\n", len(collections))
 
 			findings := analyzer.Audit(collections)
 			report := reporter.NewReport(findings)
