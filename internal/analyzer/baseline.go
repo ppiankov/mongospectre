@@ -43,12 +43,12 @@ func LoadBaseline(path string) ([]Finding, error) {
 func DiffBaseline(current, baseline []Finding) []BaselineFinding {
 	baselineSet := make(map[string]bool)
 	for _, f := range baseline {
-		baselineSet[findingKey(f)] = true
+		baselineSet[findingKey(&f)] = true
 	}
 
 	currentSet := make(map[string]bool)
 	for _, f := range current {
-		currentSet[findingKey(f)] = true
+		currentSet[findingKey(&f)] = true
 	}
 
 	var result []BaselineFinding
@@ -56,7 +56,7 @@ func DiffBaseline(current, baseline []Finding) []BaselineFinding {
 	// Current findings: new or unchanged.
 	for _, f := range current {
 		status := StatusNew
-		if baselineSet[findingKey(f)] {
+		if baselineSet[findingKey(&f)] {
 			status = StatusUnchanged
 		}
 		result = append(result, BaselineFinding{Finding: f, Status: status})
@@ -64,7 +64,7 @@ func DiffBaseline(current, baseline []Finding) []BaselineFinding {
 
 	// Baseline findings not in current: resolved.
 	for _, f := range baseline {
-		if !currentSet[findingKey(f)] {
+		if !currentSet[findingKey(&f)] {
 			result = append(result, BaselineFinding{Finding: f, Status: StatusResolved})
 		}
 	}
@@ -73,7 +73,7 @@ func DiffBaseline(current, baseline []Finding) []BaselineFinding {
 }
 
 // findingKey creates a stable identity for a finding based on type+location.
-func findingKey(f Finding) string {
+func findingKey(f *Finding) string {
 	key := string(f.Type) + "|" + f.Database + "|" + f.Collection
 	if f.Index != "" {
 		key += "|" + f.Index

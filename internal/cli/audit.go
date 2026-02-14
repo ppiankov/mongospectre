@@ -96,7 +96,7 @@ func newAuditCmd() *cobra.Command {
 				MongoDBVersion: info.Version,
 			}
 
-			if err := reporter.Write(cmd.OutOrStdout(), report, reporter.Format(format)); err != nil {
+			if err := reporter.Write(cmd.OutOrStdout(), &report, reporter.Format(format)); err != nil {
 				return fmt.Errorf("write report: %w", err)
 			}
 

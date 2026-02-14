@@ -119,12 +119,12 @@ func TestLoadBaseline_InvalidJSON(t *testing.T) {
 func TestFindingKey(t *testing.T) {
 	f1 := Finding{Type: FindingUnusedIndex, Database: "app", Collection: "users", Index: "idx_old"}
 	f2 := Finding{Type: FindingUnusedIndex, Database: "app", Collection: "users", Index: "idx_old", Message: "different message"}
-	if findingKey(f1) != findingKey(f2) {
+	if findingKey(&f1) != findingKey(&f2) {
 		t.Error("same finding with different message should have same key")
 	}
 
 	f3 := Finding{Type: FindingMissingIndex, Database: "app", Collection: "users"}
-	if findingKey(f1) == findingKey(f3) {
+	if findingKey(&f1) == findingKey(&f3) {
 		t.Error("different types should have different keys")
 	}
 }

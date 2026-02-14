@@ -9,7 +9,7 @@ import (
 )
 
 // Diff compares code repo references against live MongoDB collections.
-func Diff(scan scanner.ScanResult, collections []mongoinspect.CollectionInfo) []Finding {
+func Diff(scan *scanner.ScanResult, collections []mongoinspect.CollectionInfo) []Finding {
 	// Build lookup: db.collection -> CollectionInfo
 	dbColls := make(map[string]mongoinspect.CollectionInfo)
 	for _, c := range collections {
@@ -102,7 +102,7 @@ func Diff(scan scanner.ScanResult, collections []mongoinspect.CollectionInfo) []
 }
 
 // detectUnindexedQueries finds fields queried in code that have no covering index.
-func detectUnindexedQueries(scan scanner.ScanResult, collections []mongoinspect.CollectionInfo) []Finding {
+func detectUnindexedQueries(scan *scanner.ScanResult, collections []mongoinspect.CollectionInfo) []Finding {
 	if len(scan.FieldRefs) == 0 {
 		return nil
 	}
@@ -159,7 +159,7 @@ const (
 )
 
 // suggestIndexes recommends indexes for fields queried in code that have no index.
-func suggestIndexes(scan scanner.ScanResult, collections []mongoinspect.CollectionInfo) []Finding {
+func suggestIndexes(scan *scanner.ScanResult, collections []mongoinspect.CollectionInfo) []Finding {
 	if len(scan.FieldRefs) == 0 {
 		return nil
 	}
@@ -216,7 +216,7 @@ func suggestIndexes(scan scanner.ScanResult, collections []mongoinspect.Collecti
 func findCollection(name string, collections []mongoinspect.CollectionInfo) (mongoinspect.CollectionInfo, bool) {
 	lower := strings.ToLower(name)
 	for _, c := range collections {
-		if strings.ToLower(c.Name) == lower {
+		if strings.EqualFold(c.Name, lower) {
 			return c, true
 		}
 	}

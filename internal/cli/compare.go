@@ -94,9 +94,9 @@ func newCompareCmd() *cobra.Command {
 				analyzer.SeverityMedium: 2,
 				analyzer.SeverityHigh:   3,
 			}
-			for _, f := range findings {
-				if sevOrder[f.Severity] > sevOrder[maxSev] {
-					maxSev = f.Severity
+			for i := range findings {
+				if sevOrder[findings[i].Severity] > sevOrder[maxSev] {
+					maxSev = findings[i].Severity
 				}
 			}
 			code := analyzer.ExitCode(maxSev)
@@ -129,13 +129,13 @@ func writeCompareText(cmd *cobra.Command, findings []analyzer.CompareFinding) {
 		analyzer.SeverityInfo:   "INFO",
 	}
 
-	for _, f := range findings {
-		loc := f.Database + "." + f.Collection
-		if f.Index != "" {
-			loc += "." + f.Index
+	for i := range findings {
+		loc := findings[i].Database + "." + findings[i].Collection
+		if findings[i].Index != "" {
+			loc += "." + findings[i].Index
 		}
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "[%s] %s: %s (%s)\n",
-			sevLabel[f.Severity], f.Type, f.Message, loc)
+			sevLabel[findings[i].Severity], findings[i].Type, findings[i].Message, loc)
 	}
 
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n%d differences found\n", len(findings))

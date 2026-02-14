@@ -86,7 +86,7 @@ func parseIgnoreRule(line string) (IgnoreRule, bool) {
 }
 
 // Matches checks if a finding should be suppressed by this rule.
-func (r IgnoreRule) Matches(f Finding) bool {
+func (r IgnoreRule) Matches(f *Finding) bool {
 	if r.Type != "*" && r.Type != string(f.Type) {
 		return false
 	}
@@ -112,7 +112,7 @@ func (il IgnoreList) Filter(findings []Finding) ([]Finding, int) {
 	var filtered []Finding
 	suppressed := 0
 	for _, f := range findings {
-		if il.matches(f) {
+		if il.matches(&f) {
 			suppressed++
 		} else {
 			filtered = append(filtered, f)
@@ -121,7 +121,7 @@ func (il IgnoreList) Filter(findings []Finding) ([]Finding, int) {
 	return filtered, suppressed
 }
 
-func (il IgnoreList) matches(f Finding) bool {
+func (il IgnoreList) matches(f *Finding) bool {
 	for _, r := range il.Rules {
 		if r.Matches(f) {
 			return true

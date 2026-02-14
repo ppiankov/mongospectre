@@ -81,7 +81,7 @@ func newCheckCmd() *cobra.Command {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Inspected %d collections\n", len(collections))
 
 			// Run diff
-			findings := analyzer.Diff(scan, collections)
+			findings := analyzer.Diff(&scan, collections)
 
 			// Apply ignore file.
 			if !noIgnore {
@@ -116,7 +116,7 @@ func newCheckCmd() *cobra.Command {
 				RepoPath:       repo,
 			}
 
-			if err := reporter.Write(cmd.OutOrStdout(), report, reporter.Format(format)); err != nil {
+			if err := reporter.Write(cmd.OutOrStdout(), &report, reporter.Format(format)); err != nil {
 				return fmt.Errorf("write report: %w", err)
 			}
 
