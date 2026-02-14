@@ -22,6 +22,8 @@ const (
 	FindingMissingTTL          FindingType = "MISSING_TTL"
 	FindingMissingCollection   FindingType = "MISSING_COLLECTION"
 	FindingOrphanedIndex       FindingType = "ORPHANED_INDEX"
+	FindingUnindexedQuery      FindingType = "UNINDEXED_QUERY"
+	FindingSuggestIndex        FindingType = "SUGGEST_INDEX"
 	FindingOK                  FindingType = "OK"
 )
 

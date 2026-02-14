@@ -55,7 +55,7 @@ func Scan(repoPath string) (ScanResult, error) {
 			return nil
 		}
 
-		refs, scanErr := scanFile(path, repoPath)
+		refs, fieldRefs, scanErr := scanFile(path, repoPath)
 		if scanErr != nil {
 			result.FilesSkipped++
 			return nil
@@ -63,6 +63,7 @@ func Scan(repoPath string) (ScanResult, error) {
 
 		result.FilesScanned++
 		result.Refs = append(result.Refs, refs...)
+		result.FieldRefs = append(result.FieldRefs, fieldRefs...)
 		return nil
 	})
 	if err != nil {
@@ -73,11 +74,11 @@ func Scan(repoPath string) (ScanResult, error) {
 	return result, nil
 }
 
-// scanFile reads a file line by line and returns collection references found.
-func scanFile(path, repoPath string) ([]CollectionRef, error) {
+// scanFile reads a file line by line and returns collection and field references found.
+func scanFile(path, repoPath string) ([]CollectionRef, []FieldRef, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer func() { _ = f.Close() }()
 
@@ -87,11 +88,17 @@ func scanFile(path, repoPath string) ([]CollectionRef, error) {
 	}
 
 	var refs []CollectionRef
-	scanner := bufio.NewScanner(f)
+	var fieldRefs []FieldRef
+	sc := bufio.NewScanner(f)
 	lineNum := 0
-	for scanner.Scan() {
+
+	// Track which collection is in scope for field extraction.
+	// On a given line, the collection comes from the same line's ScanLine match.
+	for sc.Scan() {
 		lineNum++
-		line := scanner.Text()
+		line := sc.Text()
+
+		var lineCollection string
 		for _, m := range ScanLine(line) {
 			refs = append(refs, CollectionRef{
 				Collection: m.Collection,
@@ -99,9 +106,24 @@ func scanFile(path, repoPath string) ([]CollectionRef, error) {
 				Line:       lineNum,
 				Pattern:    m.Pattern,
 			})
+			if lineCollection == "" {
+				lineCollection = m.Collection
+			}
+		}
+
+		// Extract queried fields if we have a collection context on this line.
+		if lineCollection != "" {
+			for _, fm := range ScanLineFields(line) {
+				fieldRefs = append(fieldRefs, FieldRef{
+					Collection: lineCollection,
+					Field:      fm.Field,
+					File:       relPath,
+					Line:       lineNum,
+				})
+			}
 		}
 	}
-	return refs, scanner.Err()
+	return refs, fieldRefs, sc.Err()
 }
 
 // uniqueCollections returns a sorted, deduplicated list of collection names.
