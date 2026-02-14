@@ -80,7 +80,13 @@ func Diff(scan scanner.ScanResult, collections []mongoinspect.CollectionInfo) []
 		}
 	}
 
-	// 4. OK: collection referenced in code and exists in DB
+	// 4. UNINDEXED_QUERY: code queries a field that has no covering index
+	findings = append(findings, detectUnindexedQueries(scan, collections)...)
+
+	// 5. SUGGEST_INDEX: recommend indexes based on queried fields
+	findings = append(findings, suggestIndexes(scan, collections)...)
+
+	// 6. OK: collection referenced in code and exists in DB
 	for _, name := range scan.Collections {
 		if _, found := findCollection(name, collections); found {
 			findings = append(findings, Finding{
@@ -92,6 +98,116 @@ func Diff(scan scanner.ScanResult, collections []mongoinspect.CollectionInfo) []
 		}
 	}
 
+	return findings
+}
+
+// detectUnindexedQueries finds fields queried in code that have no covering index.
+func detectUnindexedQueries(scan scanner.ScanResult, collections []mongoinspect.CollectionInfo) []Finding {
+	if len(scan.FieldRefs) == 0 {
+		return nil
+	}
+
+	// Group queried fields by collection.
+	fieldsByCollection := make(map[string]map[string]bool)
+	for _, fr := range scan.FieldRefs {
+		lower := strings.ToLower(fr.Collection)
+		if fieldsByCollection[lower] == nil {
+			fieldsByCollection[lower] = make(map[string]bool)
+		}
+		fieldsByCollection[lower][fr.Field] = true
+	}
+
+	var findings []Finding
+	for collName, fields := range fieldsByCollection {
+		coll, found := findCollection(collName, collections)
+		if !found {
+			continue // already reported as MISSING_COLLECTION
+		}
+
+		for field := range fields {
+			if field == "_id" {
+				continue // always indexed
+			}
+			if isFieldIndexed(field, coll.Indexes) {
+				continue
+			}
+			findings = append(findings, Finding{
+				Type:       FindingUnindexedQuery,
+				Severity:   SeverityMedium,
+				Database:   coll.Database,
+				Collection: coll.Name,
+				Message:    fmt.Sprintf("field %q is queried in code but has no covering index", field),
+			})
+		}
+	}
+	return findings
+}
+
+// isFieldIndexed checks if a field is the first key (prefix) of any index.
+func isFieldIndexed(field string, indexes []mongoinspect.IndexInfo) bool {
+	for _, idx := range indexes {
+		if len(idx.Key) > 0 && idx.Key[0].Field == field {
+			return true
+		}
+	}
+	return false
+}
+
+const (
+	suggestMinDocs    int64 = 1000 // skip suggestions for small collections
+	suggestMaxPerColl int   = 5    // limit suggestions per collection
+)
+
+// suggestIndexes recommends indexes for fields queried in code that have no index.
+func suggestIndexes(scan scanner.ScanResult, collections []mongoinspect.CollectionInfo) []Finding {
+	if len(scan.FieldRefs) == 0 {
+		return nil
+	}
+
+	// Group unindexed fields by collection.
+	unindexedByCollection := make(map[string][]string)
+	for _, fr := range scan.FieldRefs {
+		lower := strings.ToLower(fr.Collection)
+		coll, found := findCollection(lower, collections)
+		if !found || coll.DocCount < suggestMinDocs {
+			continue
+		}
+		field := fr.Field
+		if field == "_id" || isFieldIndexed(field, coll.Indexes) {
+			continue
+		}
+		unindexedByCollection[lower] = append(unindexedByCollection[lower], field)
+	}
+
+	var findings []Finding
+	for collName, fields := range unindexedByCollection {
+		coll, _ := findCollection(collName, collections)
+
+		// Deduplicate fields.
+		unique := make(map[string]bool)
+		var dedupFields []string
+		for _, f := range fields {
+			if !unique[f] {
+				unique[f] = true
+				dedupFields = append(dedupFields, f)
+			}
+		}
+
+		// Limit suggestions.
+		if len(dedupFields) > suggestMaxPerColl {
+			dedupFields = dedupFields[:suggestMaxPerColl]
+		}
+
+		for _, field := range dedupFields {
+			findings = append(findings, Finding{
+				Type:       FindingSuggestIndex,
+				Severity:   SeverityInfo,
+				Database:   coll.Database,
+				Collection: coll.Name,
+				Message:    fmt.Sprintf("consider index {%s: 1} to cover queries on field %q", field, field),
+			})
+		}
+	}
 	return findings
 }
 

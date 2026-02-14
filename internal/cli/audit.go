@@ -15,6 +15,8 @@ func newAuditCmd() *cobra.Command {
 	var (
 		database string
 		format   string
+		noIgnore bool
+		baseline string
 	)
 
 	cmd := &cobra.Command{
@@ -61,6 +63,31 @@ func newAuditCmd() *cobra.Command {
 			}
 
 			findings := analyzer.Audit(collections)
+
+			// Apply ignore file.
+			if !noIgnore {
+				cwd, _ := os.Getwd()
+				il, ilErr := analyzer.LoadIgnoreFile(cwd)
+				if ilErr != nil {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", ilErr)
+				}
+				var suppressed int
+				findings, suppressed = il.Filter(findings)
+				if verbose && suppressed > 0 {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Suppressed %d findings via .mongospectreignore\n", suppressed)
+				}
+			}
+
+			// Baseline comparison.
+			if baseline != "" {
+				baselineFindings, blErr := analyzer.LoadBaseline(baseline)
+				if blErr != nil {
+					return fmt.Errorf("load baseline: %w", blErr)
+				}
+				diff := analyzer.DiffBaseline(findings, baselineFindings)
+				reporter.WriteBaselineDiff(cmd.OutOrStdout(), diff)
+			}
+
 			report := reporter.NewReport(findings)
 			report.Metadata = reporter.Metadata{
 				Version:        version,
@@ -83,6 +110,8 @@ func newAuditCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&database, "database", "", "specific database to audit (default: all non-system)")
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "output format: text or json")
+	cmd.Flags().BoolVar(&noIgnore, "no-ignore", false, "bypass .mongospectreignore file")
+	cmd.Flags().StringVar(&baseline, "baseline", "", "path to previous JSON report for diff comparison")
 
 	return cmd
 }

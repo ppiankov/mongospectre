@@ -18,6 +18,8 @@ func newCheckCmd() *cobra.Command {
 		database      string
 		format        string
 		failOnMissing bool
+		noIgnore      bool
+		baseline      string
 	)
 
 	cmd := &cobra.Command{
@@ -80,6 +82,31 @@ func newCheckCmd() *cobra.Command {
 
 			// Run diff
 			findings := analyzer.Diff(scan, collections)
+
+			// Apply ignore file.
+			if !noIgnore {
+				cwd, _ := os.Getwd()
+				il, ilErr := analyzer.LoadIgnoreFile(cwd)
+				if ilErr != nil {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", ilErr)
+				}
+				var suppressed int
+				findings, suppressed = il.Filter(findings)
+				if verbose && suppressed > 0 {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Suppressed %d findings via .mongospectreignore\n", suppressed)
+				}
+			}
+
+			// Baseline comparison.
+			if baseline != "" {
+				baselineFindings, blErr := analyzer.LoadBaseline(baseline)
+				if blErr != nil {
+					return fmt.Errorf("load baseline: %w", blErr)
+				}
+				diff := analyzer.DiffBaseline(findings, baselineFindings)
+				reporter.WriteBaselineDiff(cmd.OutOrStdout(), diff)
+			}
+
 			report := reporter.NewReport(findings)
 			report.Metadata = reporter.Metadata{
 				Version:        version,
@@ -113,6 +140,8 @@ func newCheckCmd() *cobra.Command {
 	cmd.Flags().StringVar(&database, "database", "", "specific database to check (default: all non-system)")
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "output format: text or json")
 	cmd.Flags().BoolVar(&failOnMissing, "fail-on-missing", false, "exit 2 if any MISSING_COLLECTION found")
+	cmd.Flags().BoolVar(&noIgnore, "no-ignore", false, "bypass .mongospectreignore file")
+	cmd.Flags().StringVar(&baseline, "baseline", "", "path to previous JSON report for diff comparison")
 
 	return cmd
 }
