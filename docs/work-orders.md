@@ -442,6 +442,217 @@ Current state: 0% coverage on `internal/cli/`.
 
 ---
 
+## WO-19: Aggregation Pipeline Field Extraction
+
+**Goal:** Detect queried/projected fields from aggregation pipeline stages in code.
+
+### Details
+Extend `internal/scanner/query_scanner.go` to extract fields from:
+- `$match` — filter fields (already partially handled for simple cases)
+- `$group` — `_id` field and accumulator source fields
+- `$project` / `$addFields` — included/excluded field names
+- `$lookup` — `localField`, `foreignField`, `from` (as collection ref)
+- `$sort` — sorted field names
+- `$unwind` — unwound field path
+
+### Patterns
+```javascript
+// JS/Python
+db.orders.aggregate([
+  { $match: { status: "active" } },
+  { $lookup: { from: "users", localField: "userId", foreignField: "_id" } },
+  { $group: { _id: "$category", total: { $sum: "$amount" } } },
+  { $sort: { total: -1 } }
+])
+```
+```go
+// Go
+pipeline := mongo.Pipeline{
+    bson.D{{Key: "$match", Value: bson.M{"status": "active"}}},
+    bson.D{{Key: "$group", Value: bson.M{"_id": "$region"}}},
+}
+```
+
+### Steps
+1. Add regex patterns for `$lookup.from` as a collection reference
+2. Extract field names from `$match`, `$group._id`, `$sort` stages
+3. Feed extracted fields into existing `FieldRef` pipeline for index analysis
+4. `$lookup.from` should produce a `CollectionRef` (cross-collection dependency)
+
+### Acceptance
+- `mongospectre check` detects fields from aggregate pipelines
+- `$lookup.from` appears as a collection reference
+- Tests cover JS, Python, Go pipeline patterns
+- `make test && make lint` clean
+
+---
+
+## WO-20: SpectreHub Integration Contract
+
+**Goal:** Define and implement a stable JSON output schema for cross-tool ingestion.
+
+### Details
+SpectreHub aggregates findings from multiple Spectre tools (mongospectre, kafkaspectre, etc). Each tool must emit a common envelope format so SpectreHub can ingest without per-tool parsing.
+
+### Schema
+```json
+{
+  "schema": "spectre/v1",
+  "tool": "mongospectre",
+  "version": "0.2.0",
+  "timestamp": "2026-02-15T00:00:00Z",
+  "target": {
+    "type": "mongodb",
+    "uri_hash": "sha256:...",
+    "database": "app"
+  },
+  "findings": [
+    {
+      "id": "UNUSED_INDEX",
+      "severity": "medium",
+      "location": "app.users.idx_old",
+      "message": "index has never been used",
+      "metadata": {}
+    }
+  ],
+  "summary": { "total": 1, "high": 0, "medium": 1, "low": 0, "info": 0 }
+}
+```
+
+### Steps
+1. Define the `spectre/v1` envelope in `internal/reporter/spectrehub.go`
+2. Add `--format spectrehub` to audit and check commands
+3. Hash the URI (never include credentials in output)
+4. Document the schema in `docs/spectrehub-schema.md`
+
+### Acceptance
+- `mongospectre audit --format spectrehub` produces valid envelope
+- URI credentials are never present in output
+- Schema is documented
+- `make test && make lint` clean
+
+---
+
+## WO-21: Watch Mode
+
+**Goal:** Continuously monitor a MongoDB cluster and report drift as it happens.
+
+### Details
+New subcommand: `mongospectre watch` — runs `audit` on a configurable interval, compares each run against the previous, and prints only new/resolved findings.
+
+### Behavior
+- First run: full audit, prints all findings, stores as baseline in memory
+- Subsequent runs: diff against previous, print only `+ [new]` and `- [resolved]`
+- On finding change: print timestamp + diff line
+- On no change: print nothing (quiet) or a heartbeat in verbose mode
+- Ctrl+C: print final summary and exit cleanly
+
+### Flags
+- `--interval` — time between runs (default `5m`)
+- `--uri`, `--database`, `--verbose`, `--timeout` — inherited from root
+- `--format` — `text` (default) or `json` (NDJSON, one event per line)
+- `--exit-on-new` — exit with code 2 on first new high-severity finding (for CI)
+
+### Steps
+1. Create `internal/cli/watch.go` — Cobra `watch` subcommand
+2. Run `audit` in a loop with `time.Ticker`
+3. Use `analyzer.DiffBaseline` to compare current vs previous findings
+4. Use `reporter.WriteBaselineDiff` for text output
+5. Handle SIGINT for clean shutdown
+
+### Acceptance
+- `mongospectre watch --uri mongodb://... --interval 1m` runs continuously
+- Only new/resolved findings are printed after first run
+- Ctrl+C prints summary and exits 0
+- `--exit-on-new` exits on first new high finding
+- `make test && make lint` clean
+
+---
+
+## WO-22: Rich Version Output
+
+**Goal:** Include build metadata in version output for debugging and support.
+
+### Details
+Current: `mongospectre dev`
+Target: `mongospectre 0.2.0 (commit: abc1234, built: 2026-02-15T12:00:00Z, go: go1.25.0)`
+
+### Steps
+1. Add `commit` and `date` variables to `cmd/mongospectre/main.go` via ldflags
+2. Update `Makefile` LDFLAGS to inject `main.commit` and `main.date`
+3. Update `.goreleaser.yml` ldflags to match
+4. Update version command to print all metadata
+5. Add `--json` flag to version command for machine-readable output
+
+### Acceptance
+- `mongospectre version` shows version, commit, date, Go version
+- `mongospectre version --json` outputs JSON
+- GoReleaser injects correct values on release
+- `make test && make lint` clean
+
+---
+
+## WO-23: Coverage Reporting in CI
+
+**Goal:** Upload test coverage to Codecov and display badge in README.
+
+### Steps
+1. Add `coverprofile` flag to `make test` in CI
+2. Add Codecov upload step to CI workflow
+3. Add coverage badge to README
+4. Set coverage threshold in `codecov.yml` (target: 85%)
+
+### Acceptance
+- CI uploads coverage on every push
+- README displays coverage badge
+- Coverage drop below 85% fails the PR check
+- `make test && make lint` clean
+
+---
+
+## WO-24: Benchmarks
+
+**Goal:** Add performance benchmarks and regression tracking.
+
+### Details
+Add benchmarks for the hot paths: scanner regex matching, analyzer diff engine, reporter serialization.
+
+### Steps
+1. Add `Benchmark*` functions to scanner, analyzer, reporter test files
+2. Add `make bench` target to Makefile: `go test -bench=. -benchmem ./internal/...`
+3. Benchmark scanner with large files (10k lines)
+4. Benchmark analyzer with 1000 collections, 50 indexes each
+5. Benchmark reporter JSON/text/SARIF with 500 findings
+
+### Acceptance
+- `make bench` runs all benchmarks
+- Benchmarks are deterministic (no flaky timing)
+- Results include allocations (`-benchmem`)
+- `make test && make lint` clean
+
+---
+
+## WO-25: Update README
+
+**Goal:** Update README to reflect current features and version.
+
+### Steps
+1. Update Quick Start to reference latest release (not hardcoded v0.1.0)
+2. Add `compare` and `watch` subcommands to usage section
+3. Document `--format sarif` and SARIF upload workflow example
+4. Document `.mongospectre.yml` config file format
+5. Document `.mongospectreignore` file format
+6. Add shell completion instructions (`mongospectre completion bash`)
+7. Update architecture diagram to include new packages (config, compare)
+
+### Acceptance
+- README reflects all implemented features
+- No references to old versions
+- Config and ignore file formats are documented
+- `make test && make lint` clean (no code changes, but verify)
+
+---
+
 ## Non-Goals
 
 - No schema enforcement or migrations
