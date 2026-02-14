@@ -90,11 +90,13 @@ func writeText(w io.Writer, report Report) error {
 		if f.Index != "" {
 			loc += "." + f.Index
 		}
-		fmt.Fprintf(w, "[%s] %s: %s (%s)\n", label, f.Type, f.Message, loc)
+		if _, err := fmt.Fprintf(w, "[%s] %s: %s (%s)\n", label, f.Type, f.Message, loc); err != nil {
+			return err
+		}
 	}
 
-	fmt.Fprintf(w, "\nSummary: %d findings (high=%d medium=%d low=%d info=%d)\n",
+	_, err := fmt.Fprintf(w, "\nSummary: %d findings (high=%d medium=%d low=%d info=%d)\n",
 		report.Summary.Total, report.Summary.High, report.Summary.Medium,
 		report.Summary.Low, report.Summary.Info)
-	return nil
+	return err
 }

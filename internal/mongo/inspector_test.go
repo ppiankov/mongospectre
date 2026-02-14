@@ -1,6 +1,7 @@
 package mongo
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -91,7 +92,7 @@ func TestSystemDBs(t *testing.T) {
 
 func TestListDatabases_SpecificDB(t *testing.T) {
 	insp := &Inspector{}
-	dbs, err := insp.ListDatabases(nil, "mydb")
+	dbs, err := insp.ListDatabases(context.TODO(), "mydb")
 	if err != nil {
 		t.Fatal(err)
 	}
