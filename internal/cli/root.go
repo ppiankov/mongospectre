@@ -18,6 +18,7 @@ func newRootCmd(version string) *cobra.Command {
 	root.PersistentFlags().StringVar(&uri, "uri", "", "MongoDB connection URI")
 
 	root.AddCommand(newVersionCmd(version))
+	root.AddCommand(newAuditCmd())
 
 	return root
 }
