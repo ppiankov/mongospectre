@@ -109,7 +109,7 @@ func newAuditCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&database, "database", "", "specific database to audit (default: all non-system)")
-	cmd.Flags().StringVarP(&format, "format", "f", "text", "output format: text or json")
+	cmd.Flags().StringVarP(&format, "format", "f", "text", "output format: text, json, or sarif")
 	cmd.Flags().BoolVar(&noIgnore, "no-ignore", false, "bypass .mongospectreignore file")
 	cmd.Flags().StringVar(&baseline, "baseline", "", "path to previous JSON report for diff comparison")
 

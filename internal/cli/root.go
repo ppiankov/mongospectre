@@ -65,7 +65,7 @@ func newVersionCmd(version string) *cobra.Command {
 		Use:   "version",
 		Short: "Print the version",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("mongospectre " + version)
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "mongospectre "+version)
 		},
 	}
 }
