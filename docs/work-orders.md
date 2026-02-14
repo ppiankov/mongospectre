@@ -365,6 +365,83 @@ New finding type: `SUGGEST_INDEX` with severity `info`
 
 ---
 
+## WO-15: Wire SARIF format to CLI flags
+
+**Goal:** Fix bug — SARIF reporter exists in `internal/reporter/` but CLI `--format` flag only accepts `text` and `json`.
+
+### Steps
+1. Add `sarif` to `--format` flag choices in `internal/cli/audit.go`, `internal/cli/check.go`, `internal/cli/compare.go`
+2. Pass `sarif` format through to `reporter.Write()`
+3. Update `--help` text to show `text|json|sarif`
+
+### Acceptance
+- `mongospectre audit --format sarif` produces valid SARIF 2.1.0
+- `mongospectre check --format sarif` works
+- `make test` passes with -race
+
+---
+
+## WO-16: Unit test coverage to 85%
+
+**Goal:** Bring unit test coverage from 14% to >85% on core packages.
+
+Current state: only integration tests exist for `internal/mongo/`. Core packages (`analyzer`, `scanner`, `reporter`) need mock-based unit tests.
+
+### Packages to cover
+- `internal/mongo/` — mock mongo client for inspector error paths, empty results, malformed data
+- `internal/analyzer/` — audit detection logic, diff engine, severity scoring
+- `internal/scanner/` — collection/field extraction from Go/JS/Python code patterns
+- `internal/reporter/` — JSON, text, SARIF output formatting
+
+### Acceptance
+- `make test` coverage >85% on analyzer, scanner, reporter
+- `make test` passes with -race
+- No flaky tests — all deterministic with mocks
+
+---
+
+## WO-17: CLI tests
+
+**Goal:** Test CLI layer — flag validation, error handling, exit codes.
+
+Current state: 0% coverage on `internal/cli/`.
+
+### Test cases
+- Invalid `--format` value returns error
+- Missing `--uri` returns helpful error
+- `--database` flag scopes correctly
+- Exit code 0 when no findings, 1 for medium, 2 for high
+- `--version` prints version string
+- `--help` shows all subcommands
+
+### Files
+- `internal/cli/root_test.go`
+- `internal/cli/audit_test.go`
+- `internal/cli/check_test.go`
+
+### Acceptance
+- CLI coverage >70%
+- `make test` passes with -race
+
+---
+
+## WO-18: Run integration tests in CI
+
+**Goal:** Wire `make test-integration` into CI workflow.
+
+`make test-integration` exists but CI only runs `make test`. Integration tests need a MongoDB service container.
+
+### Steps
+1. Add MongoDB service container to `.github/workflows/ci.yml`
+2. Add `test-integration` step after unit tests
+3. Set `MONGODB_TEST_URI` env var pointing to service container
+
+### Acceptance
+- CI runs both `make test` and `make test-integration`
+- Integration tests pass in CI with MongoDB 7.x service
+
+---
+
 ## Non-Goals
 
 - No schema enforcement or migrations
