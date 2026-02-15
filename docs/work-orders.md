@@ -1,6 +1,6 @@
 # Work Orders — mongospectre
 
-## WO-01: Project Scaffold
+## WO-01: Project Scaffold ✅
 
 **Goal:** Create Go project structure matching Spectre family conventions.
 
@@ -19,7 +19,7 @@
 
 ---
 
-## WO-02: MongoDB Inspector
+## WO-02: MongoDB Inspector ✅
 
 **Goal:** Connect to MongoDB and fetch collection metadata + index usage statistics.
 
@@ -43,7 +43,7 @@ Create `internal/mongo/` package:
 
 ---
 
-## WO-03: Audit Command
+## WO-03: Audit Command ✅
 
 **Goal:** Cluster-only analysis — find problems without code scanning.
 
@@ -70,7 +70,7 @@ Create `internal/mongo/` package:
 
 ---
 
-## WO-04: Code Scanner
+## WO-04: Code Scanner ✅
 
 **Goal:** Scan code repo for MongoDB collection/field references.
 
@@ -93,7 +93,7 @@ Create `internal/scanner/` package:
 
 ---
 
-## WO-05: Check Command (Code + Cluster Diff)
+## WO-05: Check Command (Code + Cluster Diff) ✅
 
 **Goal:** Compare code repo references against live MongoDB.
 
@@ -115,7 +115,7 @@ Create `internal/scanner/` package:
 
 ---
 
-## WO-06: Tests and Release v0.1.0
+## WO-06: Tests and Release v0.1.0 ✅
 
 **Goal:** Full test suite and tagged release.
 
@@ -134,7 +134,7 @@ Create `internal/scanner/` package:
 
 ---
 
-## WO-07: Field-Level Query Scanning
+## WO-07: Field-Level Query Scanning ✅
 
 **Goal:** Detect queried fields from code and cross-reference with existing indexes.
 
@@ -159,7 +159,7 @@ Create `internal/scanner/query_scanner.go`:
 
 ---
 
-## WO-08: Config File
+## WO-08: Config File ✅
 
 **Goal:** Support `.mongospectre.yml` for persistent configuration.
 
@@ -197,7 +197,7 @@ defaults:
 
 ---
 
-## WO-09: Baseline and Ignore File
+## WO-09: Baseline and Ignore File ✅
 
 **Goal:** Allow suppressing known-ok findings so reports stay actionable.
 
@@ -229,7 +229,7 @@ MISSING_TTL app.settings
 
 ---
 
-## WO-10: SARIF Output
+## WO-10: SARIF Output ✅
 
 **Goal:** Emit SARIF format for GitHub Security tab integration.
 
@@ -252,7 +252,7 @@ MISSING_TTL app.settings
 
 ---
 
-## WO-11: Integration Tests
+## WO-11: Integration Tests ✅
 
 **Goal:** Test MongoDB inspector against a real instance using testcontainers.
 
@@ -277,7 +277,7 @@ MISSING_TTL app.settings
 
 ---
 
-## WO-12: Index Suggestions
+## WO-12: Index Suggestions ✅
 
 **Goal:** Recommend indexes based on observed query patterns from code scanning.
 
@@ -309,7 +309,7 @@ New finding type: `SUGGEST_INDEX` with severity `info`
 
 ---
 
-## WO-13: Diff Against Baseline
+## WO-13: Diff Against Baseline ✅
 
 **Goal:** Compare current run against a previous report to show new/resolved findings.
 
@@ -333,7 +333,7 @@ New finding type: `SUGGEST_INDEX` with severity `info`
 
 ---
 
-## WO-14: Multi-Cluster Comparison
+## WO-14: Multi-Cluster Comparison ✅
 
 **Goal:** Compare schemas across environments (e.g., staging vs production).
 
@@ -365,7 +365,7 @@ New finding type: `SUGGEST_INDEX` with severity `info`
 
 ---
 
-## WO-15: Wire SARIF format to CLI flags
+## WO-15: Wire SARIF format to CLI flags ✅
 
 **Goal:** Fix bug — SARIF reporter exists in `internal/reporter/` but CLI `--format` flag only accepts `text` and `json`.
 
@@ -381,7 +381,7 @@ New finding type: `SUGGEST_INDEX` with severity `info`
 
 ---
 
-## WO-16: Unit test coverage to 85%
+## WO-16: Unit test coverage to 85% ✅
 
 **Goal:** Bring unit test coverage from 14% to >85% on core packages.
 
@@ -400,11 +400,11 @@ Current state: only integration tests exist for `internal/mongo/`. Core packages
 
 ---
 
-## WO-17: CLI tests
+## WO-17: CLI tests ⚠️ (50% — ceiling without MongoDB)
 
 **Goal:** Test CLI layer — flag validation, error handling, exit codes.
 
-Current state: 0% coverage on `internal/cli/`.
+Current state: 50% coverage on `internal/cli/`. Remaining 50% is behind MongoDB connections — requires WO-26 (podman integration tests) to reach 70%+ target.
 
 ### Test cases
 - Invalid `--format` value returns error
@@ -425,7 +425,7 @@ Current state: 0% coverage on `internal/cli/`.
 
 ---
 
-## WO-18: Run integration tests in CI
+## WO-18: Run integration tests in CI ✅
 
 **Goal:** Wire `make test-integration` into CI workflow.
 
@@ -442,7 +442,7 @@ Current state: 0% coverage on `internal/cli/`.
 
 ---
 
-## WO-19: Aggregation Pipeline Field Extraction
+## WO-19: Aggregation Pipeline Field Extraction ✅
 
 **Goal:** Detect queried/projected fields from aggregation pipeline stages in code.
 
@@ -487,7 +487,7 @@ pipeline := mongo.Pipeline{
 
 ---
 
-## WO-20: SpectreHub Integration Contract
+## WO-20: SpectreHub Integration Contract ✅
 
 **Goal:** Define and implement a stable JSON output schema for cross-tool ingestion.
 
@@ -533,7 +533,7 @@ SpectreHub aggregates findings from multiple Spectre tools (mongospectre, kafkas
 
 ---
 
-## WO-21: Watch Mode
+## WO-21: Watch Mode ✅
 
 **Goal:** Continuously monitor a MongoDB cluster and report drift as it happens.
 
@@ -569,7 +569,7 @@ New subcommand: `mongospectre watch` — runs `audit` on a configurable interval
 
 ---
 
-## WO-22: Rich Version Output
+## WO-22: Rich Version Output ✅
 
 **Goal:** Include build metadata in version output for debugging and support.
 
@@ -592,7 +592,7 @@ Target: `mongospectre 0.2.0 (commit: abc1234, built: 2026-02-15T12:00:00Z, go: g
 
 ---
 
-## WO-23: Coverage Reporting in CI
+## WO-23: Coverage Reporting in CI ✅
 
 **Goal:** Upload test coverage to Codecov and display badge in README.
 
@@ -610,7 +610,7 @@ Target: `mongospectre 0.2.0 (commit: abc1234, built: 2026-02-15T12:00:00Z, go: g
 
 ---
 
-## WO-24: Benchmarks
+## WO-24: Benchmarks ✅
 
 **Goal:** Add performance benchmarks and regression tracking.
 
@@ -632,7 +632,7 @@ Add benchmarks for the hot paths: scanner regex matching, analyzer diff engine, 
 
 ---
 
-## WO-25: Update README
+## WO-25: Update README ✅
 
 **Goal:** Update README to reflect current features and version.
 
@@ -653,9 +653,198 @@ Add benchmarks for the hot paths: scanner regex matching, analyzer diff engine, 
 
 ---
 
+---
+
+## Phase 2: Security Audit + Test Infrastructure
+
+---
+
+## WO-26: CLI Integration Tests with MongoDB in CI
+
+**Goal:** Run CLI commands against a real MongoDB to cover the 50% of CLI code behind connections.
+
+### Problem
+CLI coverage is capped at 50% — all code past `NewInspector()` (audit analysis, report writing, ignore/baseline filtering, exit codes, compare formatting, watch baseline diffing) is unreachable without a live MongoDB.
+
+### Approach
+Two execution modes:
+- **CI (primary)**: GitHub Actions workflow uses `services:` to spin up `mongo:7` as a service container. Tests read `MONGODB_TEST_URI` env var. No podman/docker needed in the test code itself.
+- **Local (optional)**: Developer runs `podman run -d -p 27017:27017 mongo:7` manually, then `MONGODB_TEST_URI=mongodb://localhost:27017 make test-cli-integration`.
+
+Guard with `//go:build integration` tag so `make test` never requires MongoDB.
+
+### Steps
+1. Create `internal/cli/cli_integration_test.go` guarded by build tag
+2. Read `MONGODB_TEST_URI` from env (fail fast if unset)
+3. Seed test data: create collections, indexes, insert docs with known patterns
+4. Test audit end-to-end: connect → inspect → analyze → report (text, json, sarif, spectrehub)
+5. Test check end-to-end: scan repo + audit → diff → report
+6. Test compare: seed two databases, compare them
+7. Test watch: run with `--interval 1s --exit-on-new`, verify baseline diff
+8. Test ignore file: create `.mongospectreignore`, verify suppression
+9. Test baseline: save JSON report, re-run with `--baseline`, verify diff output
+10. Add `test-cli-integration` job to `.github/workflows/ci.yml` with `services: mongodb`
+11. Add `make test-cli-integration` target: `go test -race -tags integration ./internal/cli/`
+
+### CI Workflow Addition
+```yaml
+test-cli-integration:
+  runs-on: ubuntu-latest
+  services:
+    mongodb:
+      image: mongo:7
+      ports:
+        - 27017:27017
+  env:
+    MONGODB_TEST_URI: mongodb://localhost:27017
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-go@v5
+    - run: make test-cli-integration
+```
+
+### Acceptance
+- CLI coverage >70% with integration tests
+- CI runs integration tests automatically via service container
+- `make test` still works without MongoDB (build tag)
+- Local dev can run with `podman run` + env var
+- No flaky timing — use generous timeouts, poll for readiness
+
+---
+
+## WO-27: Auth Database User Audit
+
+**Goal:** Detect risky MongoDB user configurations — the auth db / data db split, forgotten admin users, and weak credentials.
+
+### Problem
+MongoDB users live in three places, often simultaneously:
+1. **`admin` database** — authenticates against admin, used for cluster-wide ops
+2. **Application database** (e.g., `myapp`) — authenticates against the data db directly
+3. **Both** — same username created in admin AND data db (common misconfiguration)
+
+The hairy scenarios:
+- A second user is created during initial setup, given `root` or `dbOwner` role "temporarily", then forgotten
+- That forgotten user has a simple password (`admin123`, `mongodb`, `password`) because it was "just for testing"
+- The user in the data db has admin-level privileges when it only needs `readWrite`
+- Nobody audits who has access because `db.getUsers()` is per-database and easy to miss
+
+### Detections
+- **ADMIN_IN_DATA_DB**: user with `dbAdmin`, `dbOwner`, or `root` role exists in a non-admin database
+- **DUPLICATE_USER**: same username exists in both `admin` db and application db (auth confusion risk)
+- **OVERPRIVILEGED_USER**: user has `root`, `dbOwner`, `userAdminAnyDatabase`, or `clusterAdmin` but only uses `readWrite` operations
+- **STALE_USER**: user exists but has no `authenticationRestrictions` and no recent auth activity (if `$currentOp`/audit log available)
+- **MULTIPLE_ADMIN_USERS**: more than one user with cluster-admin roles (common "forgot the second one" scenario)
+
+### Inspector Changes
+1. Add `InspectUsers(ctx, database)` to `internal/mongo/inspector.go`
+2. Query `db.getUsers()` on `admin` db and each application db
+3. Return `UserInfo{Username, Database, Roles[], Mechanisms[], CustomData, AuthRestrictions}`
+4. Query `admin.system.users` for cross-database user enumeration
+
+### Analyzer Changes
+1. Create `internal/analyzer/users.go` — user audit rules
+2. Cross-reference users across databases (admin vs app db)
+3. Flag overprivileged roles relative to actual collection operations
+4. Flag duplicate usernames across auth sources
+
+### CLI Changes
+1. Add `--audit-users` flag to `audit` command (opt-in — requires userAdmin role to list users)
+2. User findings appear alongside collection findings in all output formats
+
+### Constraints
+- **Read-only**: never modify users, passwords, or roles
+- **No password testing**: do NOT attempt to authenticate with common passwords — that's intrusion, not auditing. Report the risk pattern (admin role + data-db auth source) and let the user decide
+- **Opt-in**: `--audit-users` is required because `getUsers` needs elevated privileges
+
+### Acceptance
+- `mongospectre audit --audit-users --uri ...` reports user configuration risks
+- Duplicate users across admin/app databases are detected
+- Overprivileged users in non-admin databases are flagged
+- Multiple cluster-admin users are reported
+- Tests cover all detection patterns (mock user data)
+- `make test && make lint` clean
+
+---
+
+## WO-28: Multi-Line Query Detection
+
+**Goal:** Detect collection references and query patterns that span multiple lines.
+
+### Problem
+Current scanner uses line-by-line regex. Multi-line patterns are missed:
+```go
+coll := db.Collection(
+    "users",
+)
+```
+```python
+db.get_collection(
+    name="orders"
+)
+```
+
+### Steps
+1. Pre-join continuation lines before regex matching in scanner
+2. Handle Go backtick strings, Python triple-quotes, JS template literals
+3. Handle chained method calls split across lines
+
+### Acceptance
+- Multi-line `db.Collection(...)` calls detected in Go, Python, JS
+- No false positives from comments or strings
+- `make test && make lint` clean
+
+---
+
+## WO-29: Variable Collection Name Tracking
+
+**Goal:** Detect when collection names come from variables instead of string literals.
+
+### Problem
+```go
+const usersCollection = "users"
+db.Collection(usersCollection)
+```
+Current scanner only finds string literals. Variable references are missed entirely.
+
+### Steps
+1. Track `const` and `var` assignments of string literals in Go
+2. Track Python module-level string assignments
+3. Track JS `const`/`let` string assignments
+4. Resolve variable references in collection calls to their string values
+
+### Constraints
+- Only resolve single-hop assignments (const → use). No dataflow analysis.
+- Skip dynamic/computed names — report them as `DYNAMIC_COLLECTION` info finding instead
+
+### Acceptance
+- `const coll = "users"; db.Collection(coll)` resolves to "users"
+- Dynamic names produce an info-level finding
+- `make test && make lint` clean
+
+---
+
+## WO-30: Docker / CI Integration Examples
+
+**Goal:** Provide ready-to-use CI examples for GitHub Actions, GitLab CI, and Makefile targets.
+
+### Steps
+1. Add `docs/ci-examples.md` with GitHub Actions workflow (mongo service + audit)
+2. Add GitLab CI example with mongo service
+3. Add Makefile targets: `make audit`, `make check`, `make compare`
+4. Document `--format sarif` upload to GitHub Security tab
+5. Document `--exit-on-new` for CI gating
+
+### Acceptance
+- GitHub Actions example works with copy-paste
+- SARIF upload to GitHub Security tab documented
+- `make audit URI=mongodb://...` works
+
+---
+
 ## Non-Goals
 
 - No schema enforcement or migrations
 - No data modification or deletion
 - No sharding management
 - No web UI
+- No password brute-forcing or credential testing (WO-27 reports patterns, not passwords)
