@@ -1,0 +1,7 @@
+FROM gcr.io/distroless/static-debian12:nonroot
+
+COPY mongospectre /usr/local/bin/mongospectre
+
+USER nonroot:nonroot
+
+ENTRYPOINT ["mongospectre"]
