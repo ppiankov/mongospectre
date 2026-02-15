@@ -5,7 +5,7 @@ COMMIT   ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 DATE     ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS  := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 
-.PHONY: build test test-integration test-cli-integration lint fmt vet clean deps install coverage coverage-html bench audit check compare help
+.PHONY: build test test-integration test-cli-integration lint fmt vet clean deps install coverage coverage-html bench audit check compare docker docker-up docker-down help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -62,3 +62,12 @@ check: build ## Check code vs cluster (URI=mongodb://... REPO=./app)
 
 compare: build ## Compare two clusters (SOURCE=mongodb://... TARGET=mongodb://...)
 	./bin/$(BINARY) compare --source $(SOURCE) --target $(TARGET)
+
+docker: ## Build Docker image
+	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) -t $(BINARY):$(VERSION) .
+
+docker-up: ## Start mongospectre + mongo:7 via docker compose
+	docker compose up -d
+
+docker-down: ## Stop docker compose services
+	docker compose down

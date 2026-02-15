@@ -56,6 +56,10 @@ func newAuditCmd() *cobra.Command {
 			}
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Inspected %d collections\n", len(collections))
 
+			if len(collections) == 0 {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Hint: no collections found. Check that the URI points to a database with data, or use --database to specify one.\n")
+			}
+
 			if verbose {
 				for _, c := range collections {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  %s.%s (%d docs, %d indexes)\n",
@@ -136,6 +140,9 @@ func newAuditCmd() *cobra.Command {
 
 			code := analyzer.ExitCode(report.MaxSeverity)
 			if code != 0 {
+				if hint := reporter.ExitCodeHint(code); hint != "" {
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), hint)
+				}
 				os.Exit(code)
 			}
 			return nil
