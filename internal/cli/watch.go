@@ -163,7 +163,7 @@ func (w *watcher) run(ctx context.Context) error {
 					for _, d := range diff {
 						if d.Status == analyzer.StatusNew && d.Severity == analyzer.SeverityHigh {
 							_, _ = fmt.Fprintf(stderr, "New high-severity finding detected, exiting\n")
-							os.Exit(2)
+							return &ExitError{Code: 2}
 						}
 					}
 				}
