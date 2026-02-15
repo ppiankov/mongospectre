@@ -841,6 +841,202 @@ Current scanner only finds string literals. Variable references are missed entir
 
 ---
 
+## Phase 3: Distribution + Adoption (v0.2.x)
+
+---
+
+## WO-31: Docker Image
+
+**Goal:** Publish a container image so users can run mongospectre without installing Go or downloading binaries.
+
+**Details:**
+- `docker run ghcr.io/ppiankov/mongospectre audit --uri mongodb://host.docker.internal:27017`
+- Multi-arch: linux/amd64, linux/arm64
+- Minimal base image: `gcr.io/distroless/static-debian12` (no shell, no package manager, ~2MB base)
+- Build in release workflow alongside binary artifacts
+- Tag strategy: `latest`, semver (`v0.2.0`), git SHA
+
+**Steps:**
+1. Create `Dockerfile` — multi-stage build (Go builder → distroless)
+2. Add `docker-build` and `docker-push` to Makefile
+3. Add container build + push to `.github/workflows/release.yml`
+4. Add `docker-compose.yml` for local testing (mongospectre + mongo:7 sidecar)
+5. Update README install section with `docker run` example
+
+**Dockerfile:**
+```dockerfile
+FROM golang:1.25 AS builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /mongospectre ./cmd/mongospectre
+
+FROM gcr.io/distroless/static-debian12
+COPY --from=builder /mongospectre /mongospectre
+ENTRYPOINT ["/mongospectre"]
+```
+
+**Acceptance:**
+- `docker run ghcr.io/ppiankov/mongospectre version` works
+- Image size < 20MB
+- Multi-arch manifest published on release
+- `make test && make lint` clean
+
+---
+
+## WO-32: Homebrew Formula
+
+**Goal:** `brew install ppiankov/tap/mongospectre` for macOS and Linux users.
+
+**Steps:**
+1. Create `ppiankov/homebrew-tap` repo (if not exists)
+2. Add `Formula/mongospectre.rb` — download from GitHub release, verify SHA256
+3. Add GoReleaser homebrew tap config to `.goreleaser.yml`
+4. Auto-publish formula on release via GoReleaser
+5. Update README with `brew install` instructions
+
+**Formula template:**
+```ruby
+class Mongospectre < Formula
+  desc "MongoDB collection and index auditor"
+  homepage "https://github.com/ppiankov/mongospectre"
+  # GoReleaser fills in url + sha256 automatically
+end
+```
+
+**Acceptance:**
+- `brew install ppiankov/tap/mongospectre && mongospectre version` works
+- Formula auto-updates on new releases
+- README shows brew install as primary macOS method
+
+---
+
+## WO-33: GitHub Action
+
+**Goal:** Reusable GitHub Action so teams add mongospectre to CI in one YAML block instead of the multi-step setup in ci-examples.md.
+
+**Usage:**
+```yaml
+- uses: ppiankov/mongospectre-action@v1
+  with:
+    command: check
+    uri: ${{ secrets.MONGODB_URI }}
+    repo: .
+    format: sarif
+    sarif-upload: true
+```
+
+**Steps:**
+1. Create `ppiankov/mongospectre-action` repo
+2. `action.yml` — composite action that downloads binary + runs command
+3. Inputs: `command`, `uri`, `repo`, `format`, `database`, `fail-on-missing`, `audit-users`, `sarif-upload`
+4. Auto-upload SARIF when `sarif-upload: true` and `format: sarif`
+5. Set exit code from mongospectre (0/1/2 pass through to CI)
+6. Cache binary between runs using actions/cache
+
+**Acceptance:**
+- Action works in a test workflow against a mongo:7 service
+- SARIF auto-upload to GitHub Security tab works
+- Exit codes propagate correctly for CI gating
+
+---
+
+## WO-34: Example Configs
+
+**Goal:** Copy-paste-ready config files so users don't have to read docs to get started.
+
+**Steps:**
+1. Create `docs/examples/.mongospectre.yml` — annotated config with all options
+2. Create `docs/examples/.mongospectreignore` — common ignore patterns
+3. Create `docs/examples/docker-compose.yml` — mongospectre + mongo:7 for local testing
+4. Add `mongospectre init` command that copies example configs to CWD
+
+**`docs/examples/.mongospectre.yml`:**
+```yaml
+# MongoDB connection URI (also settable via MONGODB_URI env or --uri flag)
+uri: mongodb://localhost:27017
+
+# Scope to specific database (omit to scan all non-system databases)
+# database: myapp
+
+# Analyzer thresholds
+thresholds:
+  oversized_docs: 1000000      # collections > 1M docs flagged as oversized
+  index_usage_days: 30         # indexes with 0 ops in N days flagged as unused
+
+# Exclude patterns (databases and collections that should never be reported)
+exclude:
+  databases:
+    - local
+    - config
+    - admin
+  collections:
+    - "system.*"
+    - "*.migrations"
+
+# Default flag values
+defaults:
+  format: text
+  verbose: false
+  timeout: 30s
+```
+
+**`docs/examples/.mongospectreignore`:**
+```
+# Suppress known-OK findings — one rule per line
+# Format: FINDING_TYPE database.collection[.index]
+
+# Legacy indexes kept for rollback compatibility
+UNUSED_INDEX myapp.users.idx_old_email
+UNUSED_INDEX myapp.orders.idx_legacy_status
+
+# System collections managed by frameworks
+* myapp.schema_migrations
+* myapp.__sessions
+
+# Collections with intentionally no indexes beyond _id
+MISSING_INDEX myapp.audit_log
+```
+
+**Acceptance:**
+- Example configs are valid and parseable
+- `mongospectre init` creates `.mongospectre.yml` and `.mongospectreignore` in CWD
+- README links to examples
+
+---
+
+## WO-35: First-Run Experience
+
+**Goal:** Make `mongospectre audit --uri mongodb://localhost:27017` useful on first run, even against an unfamiliar database.
+
+**Problem:** Currently, a first-time user points mongospectre at their cluster and gets a wall of findings with no guidance on what to fix first. Or worse — an empty database returns nothing and the user thinks the tool is broken.
+
+**Improvements:**
+1. **Summary header** — before findings, print a 3-line summary: databases scanned, collections found, indexes found, total findings by severity
+2. **Empty database message** — if no collections found, print "No collections found in database X. If this is unexpected, check --database flag or URI." instead of silent exit
+3. **First finding hint** — on first `[HIGH]` finding, append a one-line hint: "Run with --verbose for details, or --format json to pipe to jq"
+4. **Connection banner** — on verbose, print "Connected to MongoDB X.Y.Z at host:port (N databases, M collections)" before scanning
+5. **Exit code explanation** — on non-zero exit, print "Exit code 2: high-severity findings detected. Use --baseline to track progress." to stderr
+
+**Steps:**
+1. Add summary header to text reporter in `internal/reporter/text.go`
+2. Add empty-result message to audit/check CLI commands
+3. Add connection banner to verbose path
+4. Add exit code hint to stderr in CLI error handling
+
+**Constraints:**
+- JSON/SARIF/SpectreHub formats unchanged — hints only in text mode
+- No behavioral changes — same findings, same exit codes
+
+**Acceptance:**
+- First run against a real cluster shows summary + findings + actionable hints
+- Empty database produces a helpful message instead of silence
+- `--format json` output is unchanged
+- `make test && make lint` clean
+
+---
+
 ## Non-Goals
 
 - No schema enforcement or migrations
