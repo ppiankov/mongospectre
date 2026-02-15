@@ -36,3 +36,49 @@ changelog:
       - "^docs:"
       - "^test:"
       - "^chore:"
+
+dockers:
+  - image_templates:
+      - "ghcr.io/ppiankov/mongospectre:{{ .Version }}-amd64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--build-arg=VERSION={{ .Version }}"
+      - "--build-arg=COMMIT={{ .ShortCommit }}"
+      - "--build-arg=DATE={{ .Date }}"
+    goarch: amd64
+
+  - image_templates:
+      - "ghcr.io/ppiankov/mongospectre:{{ .Version }}-arm64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--build-arg=VERSION={{ .Version }}"
+      - "--build-arg=COMMIT={{ .ShortCommit }}"
+      - "--build-arg=DATE={{ .Date }}"
+    goarch: arm64
+
+brews:
+  - repository:
+      owner: ppiankov
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/ppiankov/mongospectre"
+    description: "MongoDB collection and index auditor — detects drift between code and live clusters"
+    license: MIT
+    install: |
+      bin.install "mongospectre"
+    test: |
+      system "#{bin}/mongospectre", "version"
+
+docker_manifests:
+  - name_template: "ghcr.io/ppiankov/mongospectre:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/ppiankov/mongospectre:{{ .Version }}-amd64"
+      - "ghcr.io/ppiankov/mongospectre:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/ppiankov/mongospectre:latest"
+    image_templates:
+      - "ghcr.io/ppiankov/mongospectre:{{ .Version }}-amd64"
+      - "ghcr.io/ppiankov/mongospectre:{{ .Version }}-arm64"

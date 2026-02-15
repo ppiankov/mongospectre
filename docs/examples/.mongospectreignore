@@ -1,0 +1,28 @@
+# mongospectre ignore rules
+# Suppress specific findings from audit/check reports
+#
+# Format: TYPE db.collection[.index]
+#   TYPE        — finding type (e.g. UNUSED_INDEX) or * for any
+#   db          — database name or * for any
+#   collection  — collection name (supports trailing * glob)
+#   index       — optional index name or * for any
+#
+# Examples:
+
+# Ignore a known unused index that we plan to drop next sprint
+UNUSED_INDEX app.users.idx_legacy_email
+
+# Ignore all findings for audit log collections (any database)
+* *.audit_logs
+
+# Ignore missing TTL on settings collections (they're small and intentional)
+MISSING_TTL app.settings
+MISSING_TTL app.feature_flags
+
+# Ignore all findings for migration-related collections
+* app.migrations
+* app.schema_versions
+
+# Ignore unused collections that are used by background jobs
+UNUSED_COLLECTION app.job_queue
+UNUSED_COLLECTION app.dead_letters
