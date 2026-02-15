@@ -94,6 +94,7 @@ func newAuditCmd() *cobra.Command {
 				Command:        "audit",
 				Database:       database,
 				MongoDBVersion: info.Version,
+				URIHash:        reporter.HashURI(uri),
 			}
 
 			if err := reporter.Write(cmd.OutOrStdout(), &report, reporter.Format(format)); err != nil {
@@ -109,7 +110,7 @@ func newAuditCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&database, "database", "", "specific database to audit (default: all non-system)")
-	cmd.Flags().StringVarP(&format, "format", "f", "text", "output format: text, json, or sarif")
+	cmd.Flags().StringVarP(&format, "format", "f", "text", "output format: text, json, sarif, or spectrehub")
 	cmd.Flags().BoolVar(&noIgnore, "no-ignore", false, "bypass .mongospectreignore file")
 	cmd.Flags().StringVar(&baseline, "baseline", "", "path to previous JSON report for diff comparison")
 

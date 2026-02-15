@@ -33,6 +33,9 @@ var collectionPatterns = []pattern{
 	// PyMongo dot access: db.users.find, db.users.insert, db.users.aggregate, etc.
 	// Must be followed by a MongoDB operation to avoid false positives.
 	{re: regexp.MustCompile(`db\.([a-z][a-z0-9_]+)\.(find|insert|update|delete|aggregate|count|distinct|drop|create_index|remove|replace|bulk_write|watch|rename|map_reduce)`), group: 1, patType: PatternDotAccess},
+
+	// $lookup "from" field: {"$lookup": {"from": "users", ...}}
+	{re: regexp.MustCompile(`["\x60']\$lookup["\x60']\s*:\s*\{[^}]*?["']from["']\s*:\s*["']([a-zA-Z_][a-zA-Z0-9_]*)["']`), group: 1, patType: PatternDriverCall},
 }
 
 // ScanLine checks a single line of source code for collection references.
