@@ -143,7 +143,7 @@ func newAuditCmd() *cobra.Command {
 				if hint := reporter.ExitCodeHint(code); hint != "" {
 					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), hint)
 				}
-				os.Exit(code)
+				return &ExitError{Code: code}
 			}
 			return nil
 		},

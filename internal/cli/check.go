@@ -128,7 +128,7 @@ func newCheckCmd() *cobra.Command {
 			if failOnMissing {
 				for _, f := range findings {
 					if f.Type == analyzer.FindingMissingCollection {
-						os.Exit(2)
+						return &ExitError{Code: 2}
 					}
 				}
 			}
@@ -138,7 +138,7 @@ func newCheckCmd() *cobra.Command {
 				if hint := reporter.ExitCodeHint(code); hint != "" {
 					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), hint)
 				}
-				os.Exit(code)
+				return &ExitError{Code: code}
 			}
 			return nil
 		},
