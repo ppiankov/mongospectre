@@ -1,9 +1,11 @@
 BINARY   := mongospectre
 MODULE   := github.com/ppiankov/mongospectre
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS  := -s -w -X main.version=$(VERSION)
+COMMIT   ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
+DATE     ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS  := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 
-.PHONY: build test test-integration lint fmt vet clean deps install coverage coverage-html help
+.PHONY: build test test-integration lint fmt vet clean deps install coverage coverage-html bench help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -41,6 +43,9 @@ coverage: ## Run tests with coverage report
 
 coverage-html: coverage ## Open coverage report in browser
 	go tool cover -html=coverage.out
+
+bench: ## Run benchmarks
+	go test -bench=. -benchmem -count=1 -run=^$$ ./internal/...
 
 tidy: ## Verify go.mod is tidy
 	go mod tidy

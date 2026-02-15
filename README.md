@@ -10,9 +10,11 @@ MongoDB collection and index auditor. Scans codebases for collection/field refer
 A CLI tool that:
 
 - Connects to MongoDB and fetches collection metadata, index definitions, and usage statistics
-- Scans code repositories for MongoDB collection references (Go, Python, JS/TS, Java, C#, Ruby)
-- Compares code references against live database to find missing collections, unused indexes, and drift
-- Produces JSON or text audit reports
+- Scans code repositories for MongoDB collection and field references (Go, Python, JS/TS, Java, C#, Ruby)
+- Extracts queried fields from aggregation pipelines (`$match`, `$sort`, `$group`, `$lookup`, `$project`, `$unwind`)
+- Compares code references against live database to find missing collections, unused indexes, unindexed queries, and drift
+- Produces text, JSON, SARIF, or SpectreHub reports
+- Watches clusters continuously for drift detection
 
 Part of the **Spectre** family — code-vs-reality drift detection tools.
 
@@ -27,9 +29,12 @@ Part of the **Spectre** family — code-vs-reality drift detection tools.
 ## Quick Start
 
 ```bash
-# Download latest release
-curl -LO https://github.com/ppiankov/mongospectre/releases/latest/download/mongospectre_0.1.0_darwin_arm64.tar.gz
-tar -xzf mongospectre_0.1.0_darwin_arm64.tar.gz
+# Install from source
+go install github.com/ppiankov/mongospectre/cmd/mongospectre@latest
+
+# Or download a release
+curl -LO https://github.com/ppiankov/mongospectre/releases/latest/download/mongospectre_$(uname -s | tr A-Z a-z)_$(uname -m).tar.gz
+tar -xzf mongospectre_*.tar.gz
 sudo mv mongospectre /usr/local/bin/
 
 # Audit a cluster (no code scanning)
@@ -38,8 +43,11 @@ mongospectre audit --uri "mongodb://localhost:27017"
 # Check code repo against live cluster
 mongospectre check --repo ./my-app --uri "mongodb://localhost:27017"
 
-# JSON output for CI pipelines
-mongospectre audit --uri "mongodb://..." --format json
+# SARIF output for GitHub Security integration
+mongospectre audit --uri "mongodb://..." --format sarif > results.sarif
+
+# Continuous monitoring
+mongospectre watch --uri "mongodb://..." --interval 5m
 ```
 
 ## Usage
@@ -58,7 +66,7 @@ Inspects MongoDB without code scanning. Detects:
 | `MISSING_TTL` | low | Timestamp field indexed without TTL |
 
 ```bash
-mongospectre audit --uri "mongodb://..." [--database mydb] [--format json|text]
+mongospectre audit --uri "mongodb://..." [--database mydb] [--format text|json|sarif|spectrehub]
 ```
 
 ### `check` — Code + Cluster Diff
@@ -68,12 +76,48 @@ Scans a code repository and compares collection references against live MongoDB:
 | Finding | Severity | Description |
 |---------|----------|-------------|
 | `MISSING_COLLECTION` | high | Referenced in code, doesn't exist in DB |
+| `UNINDEXED_QUERY` | medium | Queried field has no covering index |
 | `UNUSED_COLLECTION` | medium | Exists in DB with 0 docs, not in code |
+| `SUGGEST_INDEX` | info | Consider adding an index for queried field |
 | `ORPHANED_INDEX` | low | Unused index on unreferenced collection |
 | `OK` | info | Collection exists and is referenced |
 
 ```bash
-mongospectre check --repo ./app --uri "mongodb://..." [--database mydb] [--format json|text] [--fail-on-missing]
+mongospectre check --repo ./app --uri "mongodb://..." [--database mydb] [--format text|json|sarif|spectrehub] [--fail-on-missing]
+```
+
+### `compare` — Cross-Cluster Schema Diff
+
+Compares schemas between two MongoDB clusters (e.g., staging vs production):
+
+```bash
+mongospectre compare --source "mongodb://staging:27017" --target "mongodb://prod:27017" [--format text|json]
+```
+
+### `watch` — Continuous Monitoring
+
+Runs `audit` on a configurable interval and prints only new/resolved findings:
+
+```bash
+mongospectre watch --uri "mongodb://..." --interval 5m [--format text|json] [--exit-on-new]
+```
+
+- First run: full audit with all findings
+- Subsequent runs: prints only `+ [new]` and `- [resolved]` changes
+- `--exit-on-new`: exit with code 2 on first new high-severity finding (for CI)
+- `--format json`: outputs NDJSON events (one per line)
+- Ctrl+C: prints summary and exits cleanly
+
+### Baseline Comparison
+
+Compare current findings against a previous report to track drift over time:
+
+```bash
+# Save baseline
+mongospectre audit --uri "mongodb://..." --format json > baseline.json
+
+# Compare later
+mongospectre audit --uri "mongodb://..." --baseline baseline.json
 ```
 
 ### Exit Codes
@@ -84,26 +128,88 @@ mongospectre check --repo ./app --uri "mongodb://..." [--database mydb] [--forma
 | 1 | Medium severity findings |
 | 2 | High severity findings |
 
+## Configuration
+
+### `.mongospectre.yml`
+
+Optional config file in the working directory:
+
+```yaml
+uri: mongodb://localhost:27017
+defaults:
+  verbose: false
+  timeout: 30s
+  database: myapp
+```
+
+CLI flags override config file values. The `MONGODB_URI` environment variable also works.
+
+### `.mongospectreignore`
+
+Suppress specific findings:
+
+```
+# Ignore all findings for a collection
+mydb.audit_logs
+
+# Ignore a specific finding type
+UNUSED_INDEX mydb.users.idx_legacy
+
+# Ignore by pattern
+UNUSED_COLLECTION mydb.tmp_*
+```
+
+## Output Formats
+
+| Format | Flag | Description |
+|--------|------|-------------|
+| text | `--format text` | Human-readable (default) |
+| json | `--format json` | Structured JSON report |
+| sarif | `--format sarif` | SARIF v2.1.0 for GitHub Security |
+| spectrehub | `--format spectrehub` | SpectreHub `spectre/v1` envelope |
+
+### SARIF Upload Example
+
+```yaml
+# .github/workflows/audit.yml
+- run: mongospectre audit --uri "$MONGODB_URI" --format sarif > mongospectre.sarif
+- uses: github/codeql-action/upload-sarif@v4
+  with:
+    sarif_file: mongospectre.sarif
+```
+
 ## Architecture
 
 ```
 cmd/mongospectre/main.go   — CLI entry point
-internal/cli/              — Cobra commands (audit, check)
+internal/cli/              — Cobra commands (audit, check, compare, watch)
+internal/config/           — YAML config and ignore file loading
 internal/mongo/            — MongoDB inspector (read-only queries)
-internal/scanner/          — Code repo collection reference scanner
-internal/analyzer/         — Detection engines (audit + diff)
-internal/reporter/         — JSON/text report output
+internal/scanner/          — Code repo collection + field reference scanner
+internal/analyzer/         — Detection engines (audit, diff, compare, baseline)
+internal/reporter/         — Text/JSON/SARIF/SpectreHub report output
 ```
 
 ### Supported Languages
 
 The code scanner detects MongoDB collection references in:
 
-- **Go** — `db.Collection("x")`
+- **Go** — `db.Collection("x")`, `bson.M{"field": ...}`, `bson.D{{Key: "field", ...}}`
 - **JavaScript/TypeScript** — `db.collection("x")`, `db.getCollection("x")`
 - **Python** — `db["x"]`, `db.x.find(...)`, PyMongo, MongoEngine
-- **Mongoose** — `mongoose.model("X", schema)`
+- **Mongoose** — `mongoose.model("X", schema)` (auto-pluralizes)
 - **Java/C#** — `GetCollection("x")`
+
+### Aggregation Pipeline Analysis
+
+The scanner extracts fields from aggregation pipeline stages:
+
+- `$match` — filter fields
+- `$sort` — sort key fields
+- `$project` / `$addFields` — projected fields
+- `$group` — `_id` and accumulator field references (`$field`)
+- `$unwind` — path field
+- `$lookup` — `localField`, `foreignField`, and `from` (as collection reference)
 
 ## Building from Source
 
@@ -113,6 +219,7 @@ cd mongospectre
 make build    # produces bin/mongospectre
 make test     # run tests with -race
 make lint     # golangci-lint
+make bench    # run benchmarks
 ```
 
 ## Known Limitations
@@ -120,14 +227,7 @@ make lint     # golangci-lint
 - Collection references using variables (`db.Collection(collName)`) are not detected
 - PyMongo dot access (`db.users.find`) requires a known operation suffix to avoid false positives
 - `$indexStats` requires MongoDB 3.2+ and may not be available on all hosting providers
-- No support for aggregation pipeline field analysis (planned)
-
-## Roadmap
-
-- [ ] Aggregation pipeline field extraction
-- [ ] Configuration file for custom patterns and thresholds
-- [ ] SpectreHub integration for centralized drift dashboards
-- [ ] Watch mode for CI/CD integration
+- Multi-line query patterns are not detected (scanner works line-by-line)
 
 ## License
 

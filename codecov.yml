@@ -1,0 +1,13 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 85%
+        threshold: 2%
+    patch:
+      default:
+        target: 80%
+
+ignore:
+  - "cmd/**"
+  - "**/*_test.go"

@@ -25,6 +25,7 @@ type Metadata struct {
 	Database       string `json:"database,omitempty"`
 	MongoDBVersion string `json:"mongodbVersion,omitempty"`
 	RepoPath       string `json:"repoPath,omitempty"`
+	URIHash        string `json:"uriHash,omitempty"`
 }
 
 // Report holds the structured audit output.
@@ -77,6 +78,8 @@ func Write(w io.Writer, report *Report, format Format) error {
 		return writeJSON(w, report)
 	case FormatSARIF:
 		return writeSARIF(w, report)
+	case FormatSpectreHub:
+		return writeSpectreHub(w, report)
 	default:
 		return writeText(w, report)
 	}

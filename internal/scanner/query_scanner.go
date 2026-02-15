@@ -35,6 +35,25 @@ var queryFieldPatterns = []fieldPattern{
 
 	// Sort/projection patterns: .sort({"field": 1}), .sort({field: 1})
 	{re: regexp.MustCompile(`\.sort\(\s*\{[^}]*?"?([a-zA-Z_][a-zA-Z0-9_.]*)"?\s*:`), fieldGroup: 1},
+
+	// $sort stage: {"$sort": {"field": 1}}
+	{re: regexp.MustCompile(`["\x60']\$sort["\x60']\s*:\s*\{[^}]*?"([a-zA-Z_][a-zA-Z0-9_.]*)":`), fieldGroup: 1},
+
+	// $project/$addFields stage: {"$project": {"field": 1}}
+	{re: regexp.MustCompile(`["\x60']\$(?:project|addFields)["\x60']\s*:\s*\{[^}]*?"([a-zA-Z_][a-zA-Z0-9_.]*)":`), fieldGroup: 1},
+
+	// $group _id field reference: {"$group": {"_id": "$field"}}
+	{re: regexp.MustCompile(`["\x60']\$group["\x60']\s*:\s*\{[^}]*?"?\$([a-zA-Z_][a-zA-Z0-9_.]*)"?`), fieldGroup: 1},
+
+	// $-prefixed field references in aggregation values: "$field", "$field.subfield"
+	// Matches things like {"$sum": "$amount"}, "_id": "$category"
+	{re: regexp.MustCompile(`:\s*["']\$([a-zA-Z_][a-zA-Z0-9_.]*)["']`), fieldGroup: 1},
+
+	// $unwind: {"$unwind": "$field"} or {"$unwind": {"path": "$field"}}
+	{re: regexp.MustCompile(`["\x60']\$unwind["\x60']\s*:\s*["']\$([a-zA-Z_][a-zA-Z0-9_.]*)["']`), fieldGroup: 1},
+
+	// $lookup localField/foreignField: {"localField": "userId", "foreignField": "_id"}
+	{re: regexp.MustCompile(`["'](?:localField|foreignField)["']\s*:\s*["']([a-zA-Z_][a-zA-Z0-9_.]*)["']`), fieldGroup: 1},
 }
 
 // fieldMatch holds a field name extracted from a query pattern on a single line.
@@ -71,11 +90,27 @@ func ScanLineFields(line string) []fieldMatch {
 		}
 	}
 
+	// Extract $-prefixed field references from pipeline stages (e.g. "$firstName" in arrays).
+	for _, f := range extractFieldRefs(line) {
+		if !seen[f] {
+			seen[f] = true
+			matches = append(matches, fieldMatch{Field: f})
+		}
+	}
+
 	return matches
 }
 
 // objectKeyContextRe matches lines that are clearly MongoDB query contexts.
 var objectKeyContextRe = regexp.MustCompile(`(?i)\.(find|findOne|find_one|findOneAndUpdate|findOneAndDelete|findOneAndReplace|updateOne|updateMany|update_one|update_many|deleteOne|deleteMany|delete_one|delete_many|countDocuments|count_documents|aggregate|sort)\(`)
+
+// pipelineStageContextRe matches lines that contain aggregation pipeline stages.
+var pipelineStageContextRe = regexp.MustCompile(`["` + "`" + `']\$(?:match|sort|project|group|addFields|set|bucket|facet|lookup|unwind)["` + "`" + `']`)
+
+// fieldRefRe extracts $-prefixed field references that are values (not keys).
+// The optional second capture group detects a trailing colon to distinguish
+// operator keys ("$match":) from field references ("$firstName").
+var fieldRefRe = regexp.MustCompile(`["']\$([a-zA-Z_][a-zA-Z0-9_.]*)["'](\s*:)?`)
 
 // objectKeyRe extracts all quoted keys from an object literal.
 var objectKeyRe = regexp.MustCompile(`["']([a-zA-Z_][a-zA-Z0-9_.]*)["']\s*:`)
@@ -84,13 +119,35 @@ var objectKeyRe = regexp.MustCompile(`["']([a-zA-Z_][a-zA-Z0-9_.]*)["']\s*:`)
 // look like MongoDB query calls. This catches the second, third, etc. keys
 // in multi-field queries like .find({"status": 1, "created_at": -1}).
 func extractObjectKeys(line string) []string {
-	if !objectKeyContextRe.MatchString(line) {
+	if !objectKeyContextRe.MatchString(line) && !pipelineStageContextRe.MatchString(line) {
 		return nil
 	}
 
 	var fields []string
 	for _, m := range objectKeyRe.FindAllStringSubmatch(line, -1) {
 		field := m[1]
+		if isValidFieldName(field) {
+			fields = append(fields, field)
+		}
+	}
+	return fields
+}
+
+// extractFieldRefs pulls $-prefixed field references from pipeline stage lines.
+// This catches references like "$firstName" inside arrays that the colon-prefixed
+// pattern misses.
+func extractFieldRefs(line string) []string {
+	if !pipelineStageContextRe.MatchString(line) {
+		return nil
+	}
+
+	var fields []string
+	for _, m := range fieldRefRe.FindAllStringSubmatch(line, -1) {
+		field := m[1]
+		// If followed by ':', this is a key (operator), not a field ref.
+		if m[2] != "" {
+			continue
+		}
 		if isValidFieldName(field) {
 			fields = append(fields, field)
 		}
@@ -114,7 +171,9 @@ func isValidFieldName(name string) bool {
 		"updateOne", "updateMany", "deleteOne", "deleteMany",
 		"countDocuments", "count_documents", "aggregate",
 		"sort", "limit", "skip", "projection",
-		"bson", "Key", "Value":
+		"bson", "Key", "Value",
+		"from", "as", "localField", "foreignField", "let", "pipeline", "path", "preserveNullAndEmptyArrays",
+		"input", "cond", "in", "then", "else", "case":
 		return false
 	}
 	return true

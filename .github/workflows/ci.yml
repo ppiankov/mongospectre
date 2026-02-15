@@ -23,7 +23,13 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
       - run: make deps
-      - run: make test
+      - run: go test -race -count=1 -coverprofile=coverage.out ./...
+      - name: Upload coverage to Codecov
+        if: matrix.go-version == '1.25'
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.out
+          fail_ci_if_error: false
 
   lint:
     name: Lint
