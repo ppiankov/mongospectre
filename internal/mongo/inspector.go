@@ -274,6 +274,18 @@ func (i *Inspector) Inspect(ctx context.Context, database string) ([]CollectionI
 	return all, nil
 }
 
+// InspectUsers queries the usersInfo command on a database and returns user metadata.
+func (i *Inspector) InspectUsers(ctx context.Context, dbName string) ([]UserInfo, error) {
+	result := i.db.RunCommand(ctx, dbName, bson.D{{Key: "usersInfo", Value: 1}})
+	var resp struct {
+		Users []UserInfo `bson:"users"`
+	}
+	if err := result.Decode(&resp); err != nil {
+		return nil, fmt.Errorf("usersInfo on %s: %w", dbName, err)
+	}
+	return resp.Users, nil
+}
+
 // toInt64 converts a BSON numeric value to int64.
 func toInt64(v any) int64 {
 	switch n := v.(type) {

@@ -405,7 +405,7 @@ func TestCheckScansThenFailsConnect(t *testing.T) {
 	dir := t.TempDir()
 	// Write a Go file with a collection reference so scanner finds something.
 	goFile := dir + "/main.go"
-	os.WriteFile(goFile, []byte(`package main
+	_ = os.WriteFile(goFile, []byte(`package main
 import "go.mongodb.org/mongo-driver/v2/mongo"
 func f(db *mongo.Database) { db.Collection("users") }
 `), 0o644)
@@ -425,7 +425,7 @@ func f(db *mongo.Database) { db.Collection("users") }
 func TestCheckScansThenFailsConnectVerbose(t *testing.T) {
 	dir := t.TempDir()
 	goFile := dir + "/main.go"
-	os.WriteFile(goFile, []byte(`package main
+	_ = os.WriteFile(goFile, []byte(`package main
 import "go.mongodb.org/mongo-driver/v2/mongo"
 func f(db *mongo.Database) { db.Collection("orders") }
 `), 0o644)
@@ -585,12 +585,12 @@ func TestConfigFileDefaults(t *testing.T) {
 	// to exercise the config fallback paths in PersistentPreRunE.
 	dir := t.TempDir()
 	cfgFile := dir + "/.mongospectre.yml"
-	os.WriteFile(cfgFile, []byte("uri: mongodb://config-uri:27017\ndefaults:\n  verbose: true\n  timeout: 10s\n"), 0o644)
+	_ = os.WriteFile(cfgFile, []byte("uri: mongodb://config-uri:27017\ndefaults:\n  verbose: true\n  timeout: 10s\n"), 0o644)
 
 	// Save and restore cwd since config.Load uses it.
 	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
+	_ = os.Chdir(dir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	uri = ""
 	verbose = false
@@ -606,11 +606,11 @@ func TestConfigFileVerboseDefault(t *testing.T) {
 	// Config sets verbose: true, verify it's applied when flag not set.
 	dir := t.TempDir()
 	cfgFile := dir + "/.mongospectre.yml"
-	os.WriteFile(cfgFile, []byte("defaults:\n  verbose: true\n"), 0o644)
+	_ = os.WriteFile(cfgFile, []byte("defaults:\n  verbose: true\n"), 0o644)
 
 	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
+	_ = os.Chdir(dir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	uri = ""
 	verbose = false
@@ -627,11 +627,11 @@ func TestConfigFileTimeoutDefault(t *testing.T) {
 	// Config sets timeout, verify it's applied when flag not set.
 	dir := t.TempDir()
 	cfgFile := dir + "/.mongospectre.yml"
-	os.WriteFile(cfgFile, []byte("defaults:\n  timeout: 45s\n"), 0o644)
+	_ = os.WriteFile(cfgFile, []byte("defaults:\n  timeout: 45s\n"), 0o644)
 
 	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
+	_ = os.Chdir(dir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	uri = ""
 	cmd := silentCmd("audit")

@@ -26,11 +26,19 @@ type FieldRef struct {
 	Line       int    `json:"line"`
 }
 
+// DynamicRef records a collection call using a variable that could not be resolved.
+type DynamicRef struct {
+	Variable string `json:"variable"`
+	File     string `json:"file"`
+	Line     int    `json:"line"`
+}
+
 // ScanResult holds all collection references found in a repository.
 type ScanResult struct {
 	RepoPath     string          `json:"repoPath"`
 	Refs         []CollectionRef `json:"refs"`
 	FieldRefs    []FieldRef      `json:"fieldRefs,omitempty"`
+	DynamicRefs  []DynamicRef    `json:"dynamicRefs,omitempty"`
 	Collections  []string        `json:"collections"` // deduplicated collection names
 	FilesScanned int             `json:"filesScanned"`
 	FilesSkipped int             `json:"filesSkipped,omitempty"`
