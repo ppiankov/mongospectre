@@ -123,6 +123,149 @@ func TestScan_EmptyDir(t *testing.T) {
 	}
 }
 
+func TestScan_MultiLine(t *testing.T) {
+	dir := t.TempDir()
+
+	writeFile(t, dir, "multiline.go", `package main
+
+import "go.mongodb.org/mongo-driver/v2/mongo"
+
+func run(db *mongo.Database) {
+	coll := db.Collection(
+		"users",
+	)
+	_ = coll
+}
+`)
+
+	writeFile(t, dir, "multiline.py", `from pymongo import MongoClient
+
+db = client["mydb"]
+col = db.collection(
+    "orders"
+)
+`)
+
+	writeFile(t, dir, "multiline.js", `const db = client.db("mydb");
+const coll = db.collection(
+    "products"
+);
+`)
+
+	result, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	collSet := make(map[string]bool)
+	for _, c := range result.Collections {
+		collSet[c] = true
+	}
+
+	for _, want := range []string{"users", "orders", "products"} {
+		if !collSet[want] {
+			t.Errorf("missing multi-line collection %q in %v", want, result.Collections)
+		}
+	}
+}
+
+func TestJoinContinuationLines_SingleLine(t *testing.T) {
+	lines := []string{
+		`db.Collection("users")`,
+		`db.Collection("orders")`,
+	}
+	joined := joinContinuationLines(lines)
+	if len(joined) != 2 {
+		t.Fatalf("expected 2 joined lines, got %d", len(joined))
+	}
+	if joined[0].lineNum != 1 || joined[1].lineNum != 2 {
+		t.Errorf("line numbers: %d, %d", joined[0].lineNum, joined[1].lineNum)
+	}
+}
+
+func TestJoinContinuationLines_MultiLine(t *testing.T) {
+	lines := []string{
+		`db.Collection(`,
+		`    "users",`,
+		`)`,
+	}
+	joined := joinContinuationLines(lines)
+	if len(joined) != 1 {
+		t.Fatalf("expected 1 joined line, got %d", len(joined))
+	}
+	if joined[0].lineNum != 1 {
+		t.Errorf("lineNum = %d, want 1", joined[0].lineNum)
+	}
+	// The joined text should contain "users"
+	if !contains(joined[0].text, `"users"`) {
+		t.Errorf("joined text should contain \"users\": %s", joined[0].text)
+	}
+}
+
+func TestJoinContinuationLines_MaxJoin(t *testing.T) {
+	// More than maxJoinLines should be capped.
+	lines := make([]string, 10)
+	lines[0] = "func("
+	for i := 1; i < 9; i++ {
+		lines[i] = "  arg,"
+	}
+	lines[9] = ")"
+
+	joined := joinContinuationLines(lines)
+	// Should produce at least 2 joined entries due to maxJoinLines cap.
+	if len(joined) < 2 {
+		t.Errorf("expected at least 2 entries due to maxJoin, got %d", len(joined))
+	}
+}
+
+func TestJoinContinuationLines_Empty(t *testing.T) {
+	joined := joinContinuationLines(nil)
+	if len(joined) != 0 {
+		t.Errorf("expected 0, got %d", len(joined))
+	}
+}
+
+func TestParenBalance(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want int
+	}{
+		{"balanced", `db.Collection("users")`, 0},
+		{"open", `db.Collection(`, 1},
+		{"close", `)`, -1},
+		{"nested", `func(a, func(b, c))`, 0},
+		{"string_with_paren", `"hello(world)"`, 0},
+		{"comment_with_paren", `foo( // bar)`, 1},
+		{"backtick_string", "`hello(`", 0},
+		{"escaped_quote", `"hello\"world"`, 0},
+		{"empty", "", 0},
+		{"multiple_open", `func(a, func(b,`, 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parenBalance(tt.line)
+			if got != tt.want {
+				t.Errorf("parenBalance(%q) = %d, want %d", tt.line, got, tt.want)
+			}
+		})
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstr(s, substr))
+}
+
+func containsSubstr(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
 func TestUniqueCollections(t *testing.T) {
 	refs := []CollectionRef{
 		{Collection: "users"},

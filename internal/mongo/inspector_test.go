@@ -561,3 +561,80 @@ func TestInspect_ListDBsError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestInspectUsers(t *testing.T) {
+	raw, err := bson.Marshal(bson.M{
+		"users": bson.A{
+			bson.M{
+				"user": "admin",
+				"db":   "admin",
+				"roles": bson.A{
+					bson.M{"role": "root", "db": "admin"},
+				},
+			},
+			bson.M{
+				"user": "appUser",
+				"db":   "myapp",
+				"roles": bson.A{
+					bson.M{"role": "readWrite", "db": "myapp"},
+					bson.M{"role": "read", "db": "reporting"},
+				},
+			},
+		},
+		"ok": 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mc := &mockClient{runCmdResult: raw}
+	insp := &Inspector{db: mc}
+	users, err := insp.InspectUsers(context.TODO(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 2 {
+		t.Fatalf("expected 2 users, got %d", len(users))
+	}
+
+	if users[0].Username != "admin" || users[0].Database != "admin" {
+		t.Errorf("users[0] = %+v", users[0])
+	}
+	if len(users[0].Roles) != 1 || users[0].Roles[0].Role != "root" {
+		t.Errorf("users[0].Roles = %+v", users[0].Roles)
+	}
+
+	if users[1].Username != "appUser" || users[1].Database != "myapp" {
+		t.Errorf("users[1] = %+v", users[1])
+	}
+	if len(users[1].Roles) != 2 {
+		t.Errorf("expected 2 roles for appUser, got %d", len(users[1].Roles))
+	}
+}
+
+func TestInspectUsers_Empty(t *testing.T) {
+	raw, err := bson.Marshal(bson.M{
+		"users": bson.A{},
+		"ok":    1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mc := &mockClient{runCmdResult: raw}
+	insp := &Inspector{db: mc}
+	users, err := insp.InspectUsers(context.TODO(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 0 {
+		t.Errorf("expected 0 users, got %d", len(users))
+	}
+}
+
+func TestInspectUsers_Error(t *testing.T) {
+	mc := &mockClient{runCmdErr: errors.New("unauthorized")}
+	insp := &Inspector{db: mc}
+	_, err := insp.InspectUsers(context.TODO(), "admin")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}

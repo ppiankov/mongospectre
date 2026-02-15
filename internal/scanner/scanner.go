@@ -55,7 +55,7 @@ func Scan(repoPath string) (ScanResult, error) {
 			return nil
 		}
 
-		refs, fieldRefs, scanErr := scanFile(path, repoPath)
+		refs, fieldRefs, dynRefs, scanErr := scanFile(path, repoPath)
 		if scanErr != nil {
 			result.FilesSkipped++
 			return nil
@@ -64,6 +64,7 @@ func Scan(repoPath string) (ScanResult, error) {
 		result.FilesScanned++
 		result.Refs = append(result.Refs, refs...)
 		result.FieldRefs = append(result.FieldRefs, fieldRefs...)
+		result.DynamicRefs = append(result.DynamicRefs, dynRefs...)
 		return nil
 	})
 	if err != nil {
@@ -74,11 +75,12 @@ func Scan(repoPath string) (ScanResult, error) {
 	return result, nil
 }
 
-// scanFile reads a file line by line and returns collection and field references found.
-func scanFile(path, repoPath string) ([]CollectionRef, []FieldRef, error) {
+// scanFile reads a file, joins multi-line expressions, and returns collection refs,
+// field refs, and dynamic (unresolvable variable) refs.
+func scanFile(path, repoPath string) ([]CollectionRef, []FieldRef, []DynamicRef, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	defer func() { _ = f.Close() }()
 
@@ -87,23 +89,48 @@ func scanFile(path, repoPath string) ([]CollectionRef, []FieldRef, error) {
 		relPath = path
 	}
 
+	var lines []string
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		lines = append(lines, sc.Text())
+	}
+	if err := sc.Err(); err != nil {
+		return nil, nil, nil, err
+	}
+
+	joined := joinContinuationLines(lines)
+	stringVars := collectStringVars(joined)
+
 	var refs []CollectionRef
 	var fieldRefs []FieldRef
-	sc := bufio.NewScanner(f)
-	lineNum := 0
+	var dynamicRefs []DynamicRef
+	seenDynamic := make(map[string]bool)
 
-	// Track which collection is in scope for field extraction.
-	// On a given line, the collection comes from the same line's ScanLine match.
-	for sc.Scan() {
-		lineNum++
-		line := sc.Text()
+	for _, jl := range joined {
+		lineMatches := ScanLine(jl.text)
+
+		// If no literal collection match, try variable resolution.
+		if len(lineMatches) == 0 {
+			resolved, dynamicVars := resolveVarCollections(jl.text, stringVars)
+			lineMatches = resolved
+			for _, v := range dynamicVars {
+				if !seenDynamic[v] {
+					seenDynamic[v] = true
+					dynamicRefs = append(dynamicRefs, DynamicRef{
+						Variable: v,
+						File:     relPath,
+						Line:     jl.lineNum,
+					})
+				}
+			}
+		}
 
 		var lineCollection string
-		for _, m := range ScanLine(line) {
+		for _, m := range lineMatches {
 			refs = append(refs, CollectionRef{
 				Collection: m.Collection,
 				File:       relPath,
-				Line:       lineNum,
+				Line:       jl.lineNum,
 				Pattern:    m.Pattern,
 			})
 			if lineCollection == "" {
@@ -111,19 +138,112 @@ func scanFile(path, repoPath string) ([]CollectionRef, []FieldRef, error) {
 			}
 		}
 
-		// Extract queried fields if we have a collection context on this line.
 		if lineCollection != "" {
-			for _, fm := range ScanLineFields(line) {
+			for _, fm := range ScanLineFields(jl.text) {
 				fieldRefs = append(fieldRefs, FieldRef{
 					Collection: lineCollection,
 					Field:      fm.Field,
 					File:       relPath,
-					Line:       lineNum,
+					Line:       jl.lineNum,
 				})
 			}
 		}
 	}
-	return refs, fieldRefs, sc.Err()
+	return refs, fieldRefs, dynamicRefs, nil
+}
+
+// joinedLine holds a possibly multi-line expression with its starting line number.
+type joinedLine struct {
+	text    string
+	lineNum int
+}
+
+// maxJoinLines limits how many lines can be joined into a single expression.
+const maxJoinLines = 5
+
+// joinContinuationLines merges lines that are part of multi-line expressions
+// by tracking parenthesis balance. Single-line expressions pass through unchanged.
+func joinContinuationLines(lines []string) []joinedLine {
+	var result []joinedLine
+	var buf strings.Builder
+	startLine := 0
+	depth := 0
+	joinCount := 0
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if depth == 0 {
+			buf.Reset()
+			buf.WriteString(trimmed)
+			startLine = i + 1
+			depth = parenBalance(trimmed)
+			joinCount = 0
+		} else {
+			buf.WriteString(" ")
+			buf.WriteString(trimmed)
+			depth += parenBalance(trimmed)
+			joinCount++
+		}
+
+		if depth <= 0 || joinCount >= maxJoinLines {
+			result = append(result, joinedLine{
+				text:    buf.String(),
+				lineNum: startLine,
+			})
+			depth = 0
+		}
+	}
+
+	// Flush remaining buffer if file ends with unclosed parens.
+	if depth > 0 {
+		result = append(result, joinedLine{
+			text:    buf.String(),
+			lineNum: startLine,
+		})
+	}
+
+	return result
+}
+
+// parenBalance counts the net parenthesis depth change for a line,
+// skipping characters inside string literals and line comments.
+func parenBalance(s string) int {
+	depth := 0
+	inStr := byte(0)
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inStr != 0 {
+			if inStr == '`' {
+				// Raw/template string — only ends with backtick.
+				if c == '`' {
+					inStr = 0
+				}
+				continue
+			}
+			if c == '\\' {
+				i++ // skip escaped character
+				continue
+			}
+			if c == inStr {
+				inStr = 0
+			}
+			continue
+		}
+		switch c {
+		case '"', '\'', '`':
+			inStr = c
+		case '/':
+			if i+1 < len(s) && s[i+1] == '/' {
+				return depth // rest is a line comment
+			}
+		case '(':
+			depth++
+		case ')':
+			depth--
+		}
+	}
+	return depth
 }
 
 // uniqueCollections returns a sorted, deduplicated list of collection names.

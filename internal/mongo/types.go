@@ -53,3 +53,16 @@ type IndexStats struct {
 type ServerInfo struct {
 	Version string `json:"version"`
 }
+
+// UserRole describes a single role assigned to a user.
+type UserRole struct {
+	Role string `json:"role" bson:"role"`
+	DB   string `json:"db"   bson:"db"`
+}
+
+// UserInfo describes a MongoDB user from db.getUsers().
+type UserInfo struct {
+	Username string     `json:"user" bson:"user"`
+	Database string     `json:"db"   bson:"db"`
+	Roles    []UserRole `json:"roles" bson:"roles"`
+}

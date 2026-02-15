@@ -659,7 +659,7 @@ Add benchmarks for the hot paths: scanner regex matching, analyzer diff engine, 
 
 ---
 
-## WO-26: CLI Integration Tests with MongoDB in CI
+## WO-26: CLI Integration Tests with MongoDB in CI ✅
 
 **Goal:** Run CLI commands against a real MongoDB to cover the 50% of CLI code behind connections.
 
@@ -712,7 +712,7 @@ test-cli-integration:
 
 ---
 
-## WO-27: Auth Database User Audit
+## WO-27: Auth Database User Audit ✅
 
 **Goal:** Detect risky MongoDB user configurations — the auth db / data db split, forgotten admin users, and weak credentials.
 
@@ -766,7 +766,7 @@ The hairy scenarios:
 
 ---
 
-## WO-28: Multi-Line Query Detection
+## WO-28: Multi-Line Query Detection ✅
 
 **Goal:** Detect collection references and query patterns that span multiple lines.
 
@@ -795,7 +795,7 @@ db.get_collection(
 
 ---
 
-## WO-29: Variable Collection Name Tracking
+## WO-29: Variable Collection Name Tracking ✅
 
 **Goal:** Detect when collection names come from variables instead of string literals.
 
@@ -823,7 +823,7 @@ Current scanner only finds string literals. Variable references are missed entir
 
 ---
 
-## WO-30: Docker / CI Integration Examples
+## WO-30: Docker / CI Integration Examples ✅
 
 **Goal:** Provide ready-to-use CI examples for GitHub Actions, GitLab CI, and Makefile targets.
 

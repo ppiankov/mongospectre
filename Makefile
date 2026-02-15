@@ -5,7 +5,7 @@ COMMIT   ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 DATE     ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS  := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 
-.PHONY: build test test-integration lint fmt vet clean deps install coverage coverage-html bench help
+.PHONY: build test test-integration test-cli-integration lint fmt vet clean deps install coverage coverage-html bench audit check compare help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -18,6 +18,9 @@ test: ## Run tests with race detector
 
 test-integration: ## Run integration tests (requires Docker)
 	go test -race -tags=integration -count=1 -timeout=120s ./internal/mongo/
+
+test-cli-integration: ## Run CLI integration tests (requires MONGODB_TEST_URI)
+	go test -race -tags=integration -count=1 -timeout=120s ./internal/cli/
 
 lint: ## Run golangci-lint
 	golangci-lint run --timeout=5m ./...
@@ -50,3 +53,12 @@ bench: ## Run benchmarks
 tidy: ## Verify go.mod is tidy
 	go mod tidy
 	git diff --exit-code go.mod go.sum
+
+audit: build ## Audit a MongoDB cluster (URI=mongodb://...)
+	./bin/$(BINARY) audit --uri $(URI)
+
+check: build ## Check code vs cluster (URI=mongodb://... REPO=./app)
+	./bin/$(BINARY) check --uri $(URI) --repo $(REPO)
+
+compare: build ## Compare two clusters (SOURCE=mongodb://... TARGET=mongodb://...)
+	./bin/$(BINARY) compare --source $(SOURCE) --target $(TARGET)
