@@ -111,6 +111,27 @@ func writeJSON(w io.Writer, report *Report) error {
 }
 
 func writeText(w io.Writer, report *Report) error {
+	// Print header when metadata is populated.
+	if report.Metadata.Command != "" {
+		header := "mongospectre"
+		if report.Metadata.Version != "" {
+			header += " " + report.Metadata.Version
+		}
+		header += " | " + report.Metadata.Command
+		if report.Metadata.MongoDBVersion != "" {
+			header += " | MongoDB " + report.Metadata.MongoDBVersion
+		}
+		if report.Metadata.Database != "" {
+			header += " | db=" + report.Metadata.Database
+		}
+		if _, err := fmt.Fprintln(w, header); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(w); err != nil {
+			return err
+		}
+	}
+
 	if report.Summary.Total == 0 {
 		_, err := fmt.Fprintln(w, "No findings.")
 		return err
@@ -138,4 +159,16 @@ func writeText(w io.Writer, report *Report) error {
 		report.Summary.Total, report.Summary.High, report.Summary.Medium,
 		report.Summary.Low, report.Summary.Info)
 	return err
+}
+
+// ExitCodeHint returns a human-readable explanation for the exit code.
+func ExitCodeHint(code int) string {
+	switch code {
+	case 1:
+		return "Exit 1: medium-severity findings detected"
+	case 2:
+		return "Exit 2: high-severity findings detected"
+	default:
+		return ""
+	}
 }

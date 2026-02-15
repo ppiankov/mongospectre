@@ -1,0 +1,30 @@
+# mongospectre configuration
+# Place this file in your project root or home directory (~/.mongospectre.yml)
+
+# MongoDB connection URI (overridden by --uri flag or MONGODB_URI env var)
+# uri: mongodb://localhost:27017
+
+# Restrict audit to a specific database (default: all non-system databases)
+# database: myapp
+
+# Detection thresholds
+thresholds:
+  # Flag collections with more than this many documents as oversized
+  oversized_docs: 1000000
+  # Flag indexes with zero ops for this many days as unused
+  index_usage_days: 30
+
+# Exclude specific collections or databases from auditing
+exclude:
+  databases:
+    - local
+    - config
+  collections:
+    - system.sessions
+    - migrations
+
+# Default CLI flag values
+defaults:
+  format: text      # text, json, sarif, or spectrehub
+  verbose: false
+  timeout: 30s

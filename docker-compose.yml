@@ -1,0 +1,19 @@
+services:
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  mongospectre:
+    build:
+      context: .
+      args:
+        VERSION: dev
+    depends_on:
+      - mongodb
+    command: ["audit", "--uri", "mongodb://mongodb:27017", "-v"]
+
+volumes:
+  mongo-data:

@@ -8,6 +8,7 @@ import (
 
 	"github.com/ppiankov/mongospectre/internal/analyzer"
 	mongoinspect "github.com/ppiankov/mongospectre/internal/mongo"
+	"github.com/ppiankov/mongospectre/internal/reporter"
 	"github.com/spf13/cobra"
 )
 
@@ -101,6 +102,9 @@ func newCompareCmd() *cobra.Command {
 			}
 			code := analyzer.ExitCode(maxSev)
 			if code != 0 {
+				if hint := reporter.ExitCodeHint(code); hint != "" {
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), hint)
+				}
 				os.Exit(code)
 			}
 			return nil

@@ -845,7 +845,7 @@ Current scanner only finds string literals. Variable references are missed entir
 
 ---
 
-## WO-31: Docker Image
+## WO-31: Docker Image ✅
 
 **Goal:** Publish a container image so users can run mongospectre without installing Go or downloading binaries.
 
@@ -885,7 +885,7 @@ ENTRYPOINT ["/mongospectre"]
 
 ---
 
-## WO-32: Homebrew Formula
+## WO-32: Homebrew Formula ✅
 
 **Goal:** `brew install ppiankov/tap/mongospectre` for macOS and Linux users.
 
@@ -912,7 +912,7 @@ end
 
 ---
 
-## WO-33: GitHub Action
+## WO-33: GitHub Action ✅
 
 **Goal:** Reusable GitHub Action so teams add mongospectre to CI in one YAML block instead of the multi-step setup in ci-examples.md.
 
@@ -942,7 +942,7 @@ end
 
 ---
 
-## WO-34: Example Configs
+## WO-34: Example Configs ✅
 
 **Goal:** Copy-paste-ready config files so users don't have to read docs to get started.
 
@@ -1006,7 +1006,7 @@ MISSING_INDEX myapp.audit_log
 
 ---
 
-## WO-35: First-Run Experience
+## WO-35: First-Run Experience ✅
 
 **Goal:** Make `mongospectre audit --uri mongodb://localhost:27017` useful on first run, even against an unfamiliar database.
 

@@ -80,6 +80,10 @@ func newCheckCmd() *cobra.Command {
 			}
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Inspected %d collections\n", len(collections))
 
+			if len(collections) == 0 {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Hint: no collections found. Check that the URI points to a database with data, or use --database to specify one.\n")
+			}
+
 			// Run diff
 			findings := analyzer.Diff(&scan, collections)
 
@@ -131,6 +135,9 @@ func newCheckCmd() *cobra.Command {
 
 			code := analyzer.ExitCode(report.MaxSeverity)
 			if code != 0 {
+				if hint := reporter.ExitCodeHint(code); hint != "" {
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), hint)
+				}
 				os.Exit(code)
 			}
 			return nil

@@ -55,12 +55,18 @@ func TestNewReport_Empty(t *testing.T) {
 
 func TestWriteText(t *testing.T) {
 	r := NewReport(testFindings)
+	r.Metadata.Version = "1.0.0"
+	r.Metadata.Command = "audit"
+	r.Metadata.MongoDBVersion = "7.0.1"
 	var buf bytes.Buffer
 	if err := Write(&buf, &r, FormatText); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
 
+	if !strings.Contains(out, "mongospectre 1.0.0 | audit | MongoDB 7.0.1") {
+		t.Error("missing header line")
+	}
 	if !strings.Contains(out, "[HIGH]") {
 		t.Error("missing [HIGH] label")
 	}
@@ -291,6 +297,48 @@ func TestHashURI(t *testing.T) {
 	h3 := HashURI("mongodb://localhost:27018/mydb")
 	if h1 == h3 {
 		t.Error("different hosts should produce different hashes")
+	}
+}
+
+func TestWriteText_HeaderWithDatabase(t *testing.T) {
+	r := NewReport(nil)
+	r.Metadata.Command = "audit"
+	r.Metadata.Database = "mydb"
+	var buf bytes.Buffer
+	if err := Write(&buf, &r, FormatText); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "db=mydb") {
+		t.Error("missing database in header")
+	}
+	if !strings.Contains(out, "No findings.") {
+		t.Error("missing 'No findings.' for empty report")
+	}
+}
+
+func TestWriteText_NoHeader(t *testing.T) {
+	// When metadata.Command is empty, no header is printed.
+	r := NewReport(nil)
+	var buf bytes.Buffer
+	if err := Write(&buf, &r, FormatText); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "mongospectre") {
+		t.Error("should not print header when command is empty")
+	}
+}
+
+func TestExitCodeHint(t *testing.T) {
+	if h := ExitCodeHint(0); h != "" {
+		t.Errorf("hint for 0 should be empty, got %q", h)
+	}
+	if h := ExitCodeHint(1); !strings.Contains(h, "medium") {
+		t.Errorf("hint for 1 should mention medium, got %q", h)
+	}
+	if h := ExitCodeHint(2); !strings.Contains(h, "high") {
+		t.Errorf("hint for 2 should mention high, got %q", h)
 	}
 }
 

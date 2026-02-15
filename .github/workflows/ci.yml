@@ -86,6 +86,29 @@ jobs:
       - run: go mod tidy
       - run: git diff --exit-code go.mod go.sum
 
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: >
+          docker build
+          --build-arg VERSION=ci
+          --build-arg COMMIT=${{ github.sha }}
+          --build-arg DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          -t mongospectre:ci .
+      - name: Verify image runs
+        run: docker run --rm mongospectre:ci version
+      - name: Check image size
+        run: |
+          SIZE=$(docker image inspect mongospectre:ci --format='{{.Size}}')
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "Image size: ${SIZE_MB}MB"
+          if [ "$SIZE_MB" -gt 30 ]; then
+            echo "::warning::Image size ${SIZE_MB}MB exceeds 30MB target"
+          fi
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest

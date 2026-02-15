@@ -1,0 +1,80 @@
+name: mongospectre
+description: Audit MongoDB clusters for unused collections, indexes, and drift
+author: ppiankov
+
+branding:
+  icon: database
+  color: green
+
+inputs:
+  command:
+    description: "Subcommand to run: audit, check, or compare"
+    required: true
+    default: audit
+  uri:
+    description: "MongoDB connection URI"
+    required: false
+  args:
+    description: "Additional CLI arguments (e.g. --database mydb --format json)"
+    required: false
+    default: ""
+  version:
+    description: "mongospectre version to install (e.g. v0.3.0 or latest)"
+    required: false
+    default: latest
+  upload-sarif:
+    description: "Upload SARIF results to GitHub Security tab (true/false)"
+    required: false
+    default: "false"
+
+outputs:
+  exit-code:
+    description: "Exit code from mongospectre (0=clean, 1=medium, 2=high)"
+    value: ${{ steps.run.outputs.exit-code }}
+  sarif-file:
+    description: "Path to SARIF file if generated"
+    value: ${{ steps.run.outputs.sarif-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install mongospectre
+      shell: bash
+      run: |
+        VERSION="${{ inputs.version }}"
+        if [ "$VERSION" = "latest" ]; then
+          go install github.com/ppiankov/mongospectre/cmd/mongospectre@latest
+        else
+          go install "github.com/ppiankov/mongospectre/cmd/mongospectre@${VERSION}"
+        fi
+
+    - name: Run mongospectre
+      id: run
+      shell: bash
+      env:
+        MONGODB_URI: ${{ inputs.uri }}
+      run: |
+        SARIF_ARGS=""
+        SARIF_FILE=""
+        if [ "${{ inputs.upload-sarif }}" = "true" ]; then
+          SARIF_FILE="${{ runner.temp }}/mongospectre-results.sarif"
+          SARIF_ARGS="--format sarif"
+        fi
+
+        EXIT_CODE=0
+        if [ -n "$SARIF_FILE" ]; then
+          mongospectre ${{ inputs.command }} $SARIF_ARGS ${{ inputs.args }} > "$SARIF_FILE" || EXIT_CODE=$?
+        else
+          mongospectre ${{ inputs.command }} ${{ inputs.args }} || EXIT_CODE=$?
+        fi
+
+        echo "exit-code=${EXIT_CODE}" >> $GITHUB_OUTPUT
+        echo "sarif-file=${SARIF_FILE}" >> $GITHUB_OUTPUT
+
+        exit $EXIT_CODE
+
+    - name: Upload SARIF
+      if: inputs.upload-sarif == 'true' && always()
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: ${{ steps.run.outputs.sarif-file }}
