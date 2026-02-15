@@ -15,11 +15,11 @@ type pattern struct {
 // collectionPatterns are the regexes used to find collection references.
 // Order matters: more specific patterns should come first.
 var collectionPatterns = []pattern{
-	// Go: db.Collection("products")
-	{re: regexp.MustCompile(`\.Collection\(\s*"([^"]+)"\s*\)`), group: 1, patType: PatternDriverCall},
+	// Go: db.Collection("products") — allows trailing comma for multi-line calls
+	{re: regexp.MustCompile(`\.Collection\(\s*"([^"]+)"\s*,?\s*\)`), group: 1, patType: PatternDriverCall},
 
 	// JS/TS/Java: db.collection("users"), db.getCollection("users")
-	{re: regexp.MustCompile(`\.(?:collection|getCollection|GetCollection)\(\s*["']([^"']+)["']\s*\)`), group: 1, patType: PatternDriverCall},
+	{re: regexp.MustCompile(`\.(?:collection|getCollection|GetCollection)\(\s*["']([^"']+)["']\s*,?\s*\)`), group: 1, patType: PatternDriverCall},
 
 	// Mongoose: mongoose.model("User", ...) or model("User", ...)
 	{re: regexp.MustCompile(`(?:mongoose\.)?model\(\s*["']([^"']+)["']`), group: 1, patType: PatternORM},

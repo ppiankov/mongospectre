@@ -13,10 +13,11 @@ import (
 
 func newAuditCmd() *cobra.Command {
 	var (
-		database string
-		format   string
-		noIgnore bool
-		baseline string
+		database   string
+		format     string
+		noIgnore   bool
+		baseline   string
+		auditUsers bool
 	)
 
 	cmd := &cobra.Command{
@@ -63,6 +64,38 @@ func newAuditCmd() *cobra.Command {
 			}
 
 			findings := analyzer.Audit(collections)
+
+			if auditUsers {
+				var allUsers []mongoinspect.UserInfo
+
+				// Query admin database for cluster-level users.
+				adminUsers, adminErr := inspector.InspectUsers(ctx, "admin")
+				if adminErr != nil {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not list admin users: %v\n", adminErr)
+				} else {
+					allUsers = append(allUsers, adminUsers...)
+				}
+
+				// Query each application database.
+				dbs, dbsErr := inspector.ListDatabases(ctx, database)
+				if dbsErr == nil {
+					for _, db := range dbs {
+						dbUsers, dbErr := inspector.InspectUsers(ctx, db.Name)
+						if dbErr != nil {
+							_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not list users on %s: %v\n", db.Name, dbErr)
+							continue
+						}
+						allUsers = append(allUsers, dbUsers...)
+					}
+				}
+
+				if verbose {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Inspected %d users\n", len(allUsers))
+				}
+
+				userFindings := analyzer.AuditUsers(allUsers)
+				findings = append(findings, userFindings...)
+			}
 
 			// Apply ignore file.
 			if !noIgnore {
@@ -113,6 +146,7 @@ func newAuditCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "output format: text, json, sarif, or spectrehub")
 	cmd.Flags().BoolVar(&noIgnore, "no-ignore", false, "bypass .mongospectreignore file")
 	cmd.Flags().StringVar(&baseline, "baseline", "", "path to previous JSON report for diff comparison")
+	cmd.Flags().BoolVar(&auditUsers, "audit-users", false, "audit MongoDB user configurations (requires userAdmin role)")
 
 	return cmd
 }

@@ -86,7 +86,16 @@ func Diff(scan *scanner.ScanResult, collections []mongoinspect.CollectionInfo) [
 	// 5. SUGGEST_INDEX: recommend indexes based on queried fields
 	findings = append(findings, suggestIndexes(scan, collections)...)
 
-	// 6. OK: collection referenced in code and exists in DB
+	// 6. DYNAMIC_COLLECTION: variable collection name could not be resolved
+	for _, dr := range scan.DynamicRefs {
+		findings = append(findings, Finding{
+			Type:     FindingDynamicCollection,
+			Severity: SeverityInfo,
+			Message:  fmt.Sprintf("collection name from variable %q could not be resolved statically (%s:%d)", dr.Variable, dr.File, dr.Line),
+		})
+	}
+
+	// 7. OK: collection referenced in code and exists in DB
 	for _, name := range scan.Collections {
 		if _, found := findCollection(name, collections); found {
 			findings = append(findings, Finding{

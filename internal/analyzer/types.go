@@ -24,6 +24,11 @@ const (
 	FindingOrphanedIndex       FindingType = "ORPHANED_INDEX"
 	FindingUnindexedQuery      FindingType = "UNINDEXED_QUERY"
 	FindingSuggestIndex        FindingType = "SUGGEST_INDEX"
+	FindingAdminInDataDB       FindingType = "ADMIN_IN_DATA_DB"
+	FindingDuplicateUser       FindingType = "DUPLICATE_USER"
+	FindingOverprivilegedUser  FindingType = "OVERPRIVILEGED_USER"
+	FindingMultipleAdminUsers  FindingType = "MULTIPLE_ADMIN_USERS"
+	FindingDynamicCollection   FindingType = "DYNAMIC_COLLECTION"
 	FindingOK                  FindingType = "OK"
 )
 
