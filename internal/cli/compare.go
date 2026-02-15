@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/ppiankov/mongospectre/internal/analyzer"
 	mongoinspect "github.com/ppiankov/mongospectre/internal/mongo"
@@ -105,7 +104,7 @@ func newCompareCmd() *cobra.Command {
 				if hint := reporter.ExitCodeHint(code); hint != "" {
 					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), hint)
 				}
-				os.Exit(code)
+				return &ExitError{Code: code}
 			}
 			return nil
 		},

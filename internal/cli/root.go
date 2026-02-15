@@ -95,6 +95,16 @@ func newVersionCmd(info BuildInfo) *cobra.Command {
 	return cmd
 }
 
+// ExitError signals a non-zero exit code without calling os.Exit directly.
+// This allows tests to observe exit codes without killing the test process.
+type ExitError struct {
+	Code int
+}
+
+func (e *ExitError) Error() string {
+	return fmt.Sprintf("exit status %d", e.Code)
+}
+
 // Execute runs the root command.
 func Execute(v, commit, date string) error {
 	version = v
