@@ -29,13 +29,24 @@ Part of the **Spectre** family — code-vs-reality drift detection tools.
 ## Quick Start
 
 ```bash
-# Install from source
+# Homebrew
+brew install ppiankov/tap/mongospectre
+
+# Go install
 go install github.com/ppiankov/mongospectre/cmd/mongospectre@latest
 
-# Or download a release
+# Docker
+docker run --rm ghcr.io/ppiankov/mongospectre:latest audit --uri "mongodb://host.docker.internal:27017"
+
+# Or download a release binary
 curl -LO https://github.com/ppiankov/mongospectre/releases/latest/download/mongospectre_$(uname -s | tr A-Z a-z)_$(uname -m).tar.gz
 tar -xzf mongospectre_*.tar.gz
 sudo mv mongospectre /usr/local/bin/
+```
+
+```bash
+# Scaffold config files
+mongospectre init
 
 # Audit a cluster (no code scanning)
 mongospectre audit --uri "mongodb://localhost:27017"
@@ -107,6 +118,41 @@ mongospectre watch --uri "mongodb://..." --interval 5m [--format text|json] [--e
 - `--exit-on-new`: exit with code 2 on first new high-severity finding (for CI)
 - `--format json`: outputs NDJSON events (one per line)
 - Ctrl+C: prints summary and exits cleanly
+
+### `init` — Scaffold Config Files
+
+Creates starter `.mongospectre.yml` and `.mongospectreignore` in the current directory:
+
+```bash
+mongospectre init
+```
+
+Skips files that already exist. See `docs/examples/` for annotated templates.
+
+### Docker
+
+```bash
+# Run audit against a MongoDB instance
+docker run --rm ghcr.io/ppiankov/mongospectre:latest audit --uri "mongodb://host:27017"
+
+# Local development with docker-compose (includes mongo:7 sidecar)
+docker compose up
+```
+
+Multi-arch images (amd64/arm64) are published to `ghcr.io/ppiankov/mongospectre` on every release.
+
+### GitHub Action
+
+```yaml
+- uses: ppiankov/mongospectre@v0.2.0
+  with:
+    command: audit
+    uri: ${{ secrets.MONGODB_URI }}
+    args: "--database mydb --format json"
+    upload-sarif: "true"  # optional: upload to GitHub Security tab
+```
+
+See `action/action.yml` for all inputs and outputs. More CI examples in `docs/ci-examples.md`.
 
 ### Baseline Comparison
 
@@ -224,10 +270,9 @@ make bench    # run benchmarks
 
 ## Known Limitations
 
-- Collection references using variables (`db.Collection(collName)`) are not detected
+- Variable tracking is limited to same-file assignments (`collName := "users"` then `db.Collection(collName)`)
 - PyMongo dot access (`db.users.find`) requires a known operation suffix to avoid false positives
 - `$indexStats` requires MongoDB 3.2+ and may not be available on all hosting providers
-- Multi-line query patterns are not detected (scanner works line-by-line)
 
 ## License
 

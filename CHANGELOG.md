@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-02-15
+
+### Added
+
+- Docker image (multi-arch amd64/arm64) published to GHCR
+- Homebrew formula via `ppiankov/homebrew-tap` (`brew install ppiankov/tap/mongospectre`)
+- GitHub Action (`ppiankov/mongospectre`) for CI integration with optional SARIF upload
+- `init` command — scaffolds `.mongospectre.yml` and `.mongospectreignore` in current directory
+- First-run UX: text report header shows version, command, MongoDB version, and database
+- Exit code hints on stderr explaining what exit 1 and exit 2 mean
+- Empty collections hint when audit or check finds 0 collections
+- User audit findings: `USER_EXCESS_ROLES`, `USER_NO_ROLES`, `USER_ADMIN_ON_DATA_DB`
+- Multi-line query detection in code scanner (spans across line breaks)
+- Variable tracking for collection name references (same-file assignments)
+- CI integration examples for GitHub Actions and GitLab CI (`docs/ci-examples.md`)
+- CLI integration test suite (50%+ coverage)
+
+### Changed
+
+- Release workflow rewritten to use GoReleaser (builds, Docker images, and Homebrew formula in one step)
+
+### Removed
+
+- Known limitation: multi-line query patterns are now detected
+
 ## [0.1.1] - 2026-02-14
 
 ### Added
