@@ -220,6 +220,80 @@ func TestWriteBaselineDiff(t *testing.T) {
 	}
 }
 
+func TestWriteSpectreHub(t *testing.T) {
+	r := NewReport(testFindings)
+	r.Metadata.Version = "0.2.0"
+	r.Metadata.URIHash = "sha256:abc123"
+	r.Metadata.Database = "app"
+	var buf bytes.Buffer
+	if err := Write(&buf, &r, FormatSpectreHub); err != nil {
+		t.Fatal(err)
+	}
+
+	var env SpectreHubEnvelope
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if env.Schema != "spectre/v1" {
+		t.Errorf("schema = %s, want spectre/v1", env.Schema)
+	}
+	if env.Tool != "mongospectre" {
+		t.Errorf("tool = %s, want mongospectre", env.Tool)
+	}
+	if env.Version != "0.2.0" {
+		t.Errorf("version = %s, want 0.2.0", env.Version)
+	}
+	if env.Target.Type != "mongodb" {
+		t.Errorf("target.type = %s, want mongodb", env.Target.Type)
+	}
+	if env.Target.URIHash != "sha256:abc123" {
+		t.Errorf("target.uri_hash = %s", env.Target.URIHash)
+	}
+	if len(env.Findings) != 2 {
+		t.Fatalf("findings = %d, want 2", len(env.Findings))
+	}
+	if env.Summary.Total != 2 || env.Summary.High != 1 || env.Summary.Medium != 1 {
+		t.Errorf("summary = %+v", env.Summary)
+	}
+}
+
+func TestWriteSpectreHub_Empty(t *testing.T) {
+	r := NewReport(nil)
+	var buf bytes.Buffer
+	if err := Write(&buf, &r, FormatSpectreHub); err != nil {
+		t.Fatal(err)
+	}
+	var env SpectreHubEnvelope
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(env.Findings) != 0 {
+		t.Errorf("expected 0 findings, got %d", len(env.Findings))
+	}
+	// Findings array should be [] not null.
+	if !strings.Contains(buf.String(), `"findings": []`) {
+		t.Error("findings should be empty array, not null")
+	}
+}
+
+func TestHashURI(t *testing.T) {
+	// Credentials should be stripped.
+	h1 := HashURI("mongodb://user:pass@localhost:27017/mydb")
+	h2 := HashURI("mongodb://other:secret@localhost:27017/mydb")
+	if h1 != h2 {
+		t.Errorf("URIs with different credentials should produce same hash\n  h1=%s\n  h2=%s", h1, h2)
+	}
+	if !strings.HasPrefix(h1, "sha256:") {
+		t.Errorf("hash should start with sha256:, got %s", h1)
+	}
+
+	// Different hosts should produce different hashes.
+	h3 := HashURI("mongodb://localhost:27018/mydb")
+	if h1 == h3 {
+		t.Error("different hosts should produce different hashes")
+	}
+}
+
 func TestSeverityToSARIFLevel(t *testing.T) {
 	tests := []struct {
 		severity analyzer.Severity

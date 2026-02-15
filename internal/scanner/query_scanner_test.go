@@ -133,6 +133,119 @@ func TestScanLineFields_DottedField(t *testing.T) {
 	}
 }
 
+func TestScanLineFields_SortStage(t *testing.T) {
+	line := `{"$sort": {"created_at": -1, "name": 1}}`
+	got := fieldNames(ScanLineFields(line))
+	if len(got) < 1 {
+		t.Fatalf("expected at least 1 field, got %v", got)
+	}
+	found := make(map[string]bool)
+	for _, f := range got {
+		found[f] = true
+	}
+	if !found["created_at"] {
+		t.Error("missing created_at")
+	}
+}
+
+func TestScanLineFields_ProjectStage(t *testing.T) {
+	line := `{"$project": {"name": 1, "email": 1, "_id": 0}}`
+	got := fieldNames(ScanLineFields(line))
+	found := make(map[string]bool)
+	for _, f := range got {
+		found[f] = true
+	}
+	if !found["name"] {
+		t.Error("missing name from $project")
+	}
+	if !found["email"] {
+		t.Error("missing email from $project")
+	}
+}
+
+func TestScanLineFields_GroupStage(t *testing.T) {
+	line := `{"$group": {"_id": "$category", "total": {"$sum": "$amount"}}}`
+	got := fieldNames(ScanLineFields(line))
+	found := make(map[string]bool)
+	for _, f := range got {
+		found[f] = true
+	}
+	if !found["category"] {
+		t.Errorf("missing category from $group _id, got %v", got)
+	}
+	if !found["amount"] {
+		t.Errorf("missing amount from $sum, got %v", got)
+	}
+}
+
+func TestScanLineFields_Unwind(t *testing.T) {
+	line := `{"$unwind": "$items"}`
+	got := fieldNames(ScanLineFields(line))
+	if len(got) != 1 || got[0] != "items" {
+		t.Errorf("ScanLineFields($unwind) got %v, want [items]", got)
+	}
+}
+
+func TestScanLineFields_LookupFields(t *testing.T) {
+	line := `{"$lookup": {"from": "users", "localField": "userId", "foreignField": "_id", "as": "user"}}`
+	got := fieldNames(ScanLineFields(line))
+	found := make(map[string]bool)
+	for _, f := range got {
+		found[f] = true
+	}
+	if !found["userId"] {
+		t.Errorf("missing userId from $lookup localField, got %v", got)
+	}
+	// _id is valid to extract (filtered by analyzer, not scanner)
+	// "from", "as", "localField", "foreignField" should NOT appear as field names
+	for _, bad := range []string{"from", "as", "localField", "foreignField"} {
+		if found[bad] {
+			t.Errorf("%q should not appear as a field name", bad)
+		}
+	}
+}
+
+func TestScanLine_LookupFrom(t *testing.T) {
+	line := `{"$lookup": {"from": "users", "localField": "userId", "foreignField": "_id"}}`
+	matches := ScanLine(line)
+	found := false
+	for _, m := range matches {
+		if m.Collection == "users" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("$lookup from should produce collection ref 'users', got %v", matches)
+	}
+}
+
+func TestScanLineFields_AddFieldsStage(t *testing.T) {
+	line := `{"$addFields": {"fullName": {"$concat": ["$firstName", " ", "$lastName"]}}}`
+	got := fieldNames(ScanLineFields(line))
+	found := make(map[string]bool)
+	for _, f := range got {
+		found[f] = true
+	}
+	if !found["firstName"] {
+		t.Errorf("missing firstName, got %v", got)
+	}
+	if !found["lastName"] {
+		t.Errorf("missing lastName, got %v", got)
+	}
+}
+
+func TestScanLineFields_GoPipeline(t *testing.T) {
+	line := `bson.D{{Key: "$match", Value: bson.M{"status": "active"}}}`
+	got := fieldNames(ScanLineFields(line))
+	found := make(map[string]bool)
+	for _, f := range got {
+		found[f] = true
+	}
+	if !found["status"] {
+		t.Errorf("missing status from Go pipeline $match, got %v", got)
+	}
+}
+
 func TestIsValidFieldName(t *testing.T) {
 	if isValidFieldName("") {
 		t.Error("empty should be invalid")

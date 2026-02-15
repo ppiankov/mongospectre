@@ -2,27 +2,62 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 )
 
+var testBuildInfo = BuildInfo{
+	Version:   "1.2.3",
+	Commit:    "abc1234",
+	Date:      "2026-02-15T00:00:00Z",
+	GoVersion: "go1.25.0",
+}
+
 func TestVersionCommand(t *testing.T) {
-	cmd := newRootCmd("1.2.3")
+	cmd := newRootCmd(testBuildInfo)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"version"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "mongospectre 1.2.3") {
-		t.Errorf("version output = %q", out.String())
+	output := out.String()
+	if !strings.Contains(output, "mongospectre 1.2.3") {
+		t.Errorf("version output = %q", output)
+	}
+	if !strings.Contains(output, "abc1234") {
+		t.Errorf("missing commit in version output: %q", output)
+	}
+	if !strings.Contains(output, "2026-02-15") {
+		t.Errorf("missing date in version output: %q", output)
+	}
+}
+
+func TestVersionCommandJSON(t *testing.T) {
+	cmd := newRootCmd(testBuildInfo)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"version", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var info BuildInfo
+	if err := json.Unmarshal(out.Bytes(), &info); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if info.Version != "1.2.3" {
+		t.Errorf("version = %s, want 1.2.3", info.Version)
+	}
+	if info.Commit != "abc1234" {
+		t.Errorf("commit = %s, want abc1234", info.Commit)
 	}
 }
 
 func TestRootHelp(t *testing.T) {
-	cmd := newRootCmd("test")
+	cmd := newRootCmd(testBuildInfo)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"--help"})
@@ -30,7 +65,7 @@ func TestRootHelp(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	for _, sub := range []string{"audit", "check", "compare", "version"} {
+	for _, sub := range []string{"audit", "check", "compare", "version", "watch"} {
 		if !strings.Contains(help, sub) {
 			t.Errorf("help missing subcommand %q", sub)
 		}
@@ -38,7 +73,7 @@ func TestRootHelp(t *testing.T) {
 }
 
 func silentCmd(args ...string) *cobra.Command {
-	cmd := newRootCmd("test")
+	cmd := newRootCmd(testBuildInfo)
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 	cmd.SetArgs(args)
@@ -105,6 +140,18 @@ func TestCompareMissingTarget(t *testing.T) {
 	}
 }
 
+func TestWatchMissingURI(t *testing.T) {
+	uri = ""
+	cmd := silentCmd("watch")
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for missing URI")
+	}
+	if !strings.Contains(err.Error(), "--uri is required") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func TestAuditConnectionError(t *testing.T) {
 	uri = ""
 	cmd := silentCmd("audit", "--uri", "mongodb://localhost:1", "--timeout", "500ms")
@@ -137,7 +184,7 @@ func TestCompareConnectionError(t *testing.T) {
 }
 
 func TestAuditFormatFlag(t *testing.T) {
-	cmd := newRootCmd("test")
+	cmd := newRootCmd(testBuildInfo)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"audit", "--help"})
@@ -145,13 +192,15 @@ func TestAuditFormatFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	if !strings.Contains(help, "sarif") {
-		t.Error("audit --help should mention sarif format")
+	for _, f := range []string{"sarif", "spectrehub"} {
+		if !strings.Contains(help, f) {
+			t.Errorf("audit --help should mention %s format", f)
+		}
 	}
 }
 
 func TestCheckFormatFlag(t *testing.T) {
-	cmd := newRootCmd("test")
+	cmd := newRootCmd(testBuildInfo)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"check", "--help"})
@@ -159,13 +208,15 @@ func TestCheckFormatFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	if !strings.Contains(help, "sarif") {
-		t.Error("check --help should mention sarif format")
+	for _, f := range []string{"sarif", "spectrehub"} {
+		if !strings.Contains(help, f) {
+			t.Errorf("check --help should mention %s format", f)
+		}
 	}
 }
 
 func TestAuditHelpFlags(t *testing.T) {
-	cmd := newRootCmd("test")
+	cmd := newRootCmd(testBuildInfo)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"audit", "--help"})
@@ -181,7 +232,7 @@ func TestAuditHelpFlags(t *testing.T) {
 }
 
 func TestCheckHelpFlags(t *testing.T) {
-	cmd := newRootCmd("test")
+	cmd := newRootCmd(testBuildInfo)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"check", "--help"})
@@ -197,7 +248,7 @@ func TestCheckHelpFlags(t *testing.T) {
 }
 
 func TestCompareHelpFlags(t *testing.T) {
-	cmd := newRootCmd("test")
+	cmd := newRootCmd(testBuildInfo)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"compare", "--help"})
@@ -212,19 +263,31 @@ func TestCompareHelpFlags(t *testing.T) {
 	}
 }
 
+func TestWatchHelpFlags(t *testing.T) {
+	cmd := newRootCmd(testBuildInfo)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"watch", "--help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	help := out.String()
+	for _, flag := range []string{"--interval", "--format", "--exit-on-new", "--no-ignore"} {
+		if !strings.Contains(help, flag) {
+			t.Errorf("watch --help missing %s", flag)
+		}
+	}
+}
+
 func TestExecute_Version(t *testing.T) {
-	// Execute runs the root command with the given version.
-	// We can't fully test without capturing stdout, but we can
-	// verify it doesn't panic.
-	err := Execute("test-version")
-	// Execute with no args just shows help, which isn't an error.
+	err := Execute("test-version", "none", "unknown")
 	if err != nil {
 		t.Errorf("Execute returned unexpected error: %v", err)
 	}
 }
 
 func TestRootPersistentFlags(t *testing.T) {
-	cmd := newRootCmd("test")
+	cmd := newRootCmd(testBuildInfo)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"--help"})

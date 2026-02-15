@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/ppiankov/mongospectre/internal/config"
@@ -17,7 +19,15 @@ var (
 	cfg     config.Config
 )
 
-func newRootCmd(version string) *cobra.Command {
+// BuildInfo holds version and build metadata.
+type BuildInfo struct {
+	Version   string `json:"version"`
+	Commit    string `json:"commit"`
+	Date      string `json:"date"`
+	GoVersion string `json:"goVersion"`
+}
+
+func newRootCmd(info BuildInfo) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "mongospectre",
 		Short: "MongoDB collection and index auditor",
@@ -52,26 +62,46 @@ func newRootCmd(version string) *cobra.Command {
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	root.PersistentFlags().DurationVar(&timeout, "timeout", 30*time.Second, "operation timeout")
 
-	root.AddCommand(newVersionCmd(version))
+	root.AddCommand(newVersionCmd(info))
 	root.AddCommand(newAuditCmd())
 	root.AddCommand(newCheckCmd())
 	root.AddCommand(newCompareCmd())
+	root.AddCommand(newWatchCmd())
 
 	return root
 }
 
-func newVersionCmd(version string) *cobra.Command {
-	return &cobra.Command{
+func newVersionCmd(info BuildInfo) *cobra.Command {
+	var jsonOutput bool
+
+	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print the version",
 		Run: func(cmd *cobra.Command, args []string) {
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "mongospectre "+version)
+			if jsonOutput {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				_ = enc.Encode(info)
+			} else {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "mongospectre %s (commit: %s, built: %s, go: %s)\n",
+					info.Version, info.Commit, info.Date, info.GoVersion)
+			}
 		},
 	}
+
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output version as JSON")
+
+	return cmd
 }
 
 // Execute runs the root command.
-func Execute(v string) error {
+func Execute(v, commit, date string) error {
 	version = v
-	return newRootCmd(v).Execute()
+	info := BuildInfo{
+		Version:   v,
+		Commit:    commit,
+		Date:      date,
+		GoVersion: runtime.Version(),
+	}
+	return newRootCmd(info).Execute()
 }
