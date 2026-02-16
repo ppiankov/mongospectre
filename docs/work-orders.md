@@ -1037,10 +1037,414 @@ MISSING_INDEX myapp.audit_log
 
 ---
 
+---
+
+## Phase 4: Advanced Analysis
+
+---
+
+## WO-36: Smart Index Recommendation Engine
+
+**Goal:** Suggest optimal compound indexes by analyzing query patterns from code, not just flag unindexed fields.
+
+### Problem
+WO-12 adds basic `SUGGEST_INDEX` findings ("field X is queried but not indexed"). Real MongoDB performance tuning requires compound index design — field order matters, equality-sort-range (ESR) rule, covered queries, and avoiding redundant indexes.
+
+### Detections
+- **COMPOUND_INDEX_SUGGESTION**: recommend multi-field index based on co-occurring fields in queries
+- **INDEX_ORDER_WARNING**: existing compound index has suboptimal field order (violates ESR rule)
+- **REDUNDANT_INDEX**: index A is a prefix of index B (already partially covered by WO-03's DUPLICATE_INDEX, but this is smarter)
+- **PARTIAL_COVERAGE**: index covers 2/3 fields in a query pattern — adding one more field would make it a covered query
+
+### Logic
+1. Group all `FieldRef`s by collection
+2. Identify field sets that co-occur in the same query context (same function, same file, same `find`/`aggregate` call)
+3. Apply ESR rule: equality fields first, sort fields second, range fields last
+4. Check if existing indexes already cover the combination (prefix match)
+5. Score recommendations by frequency (how many code locations use this pattern)
+6. Deduplicate against existing indexes
+
+### Output
+```
+[INFO] COMPOUND_INDEX_SUGGESTION app.orders — {status:1, created_at:-1, amount:1}
+  Covers 5 query patterns across 3 files
+  Replaces: status_1 (prefix), status_1_created_at_-1 (prefix)
+```
+
+### Constraints
+- Never suggest more than 5 indexes per collection
+- Never suggest indexes for collections with <1000 documents
+- Recommendations are advisory only — never auto-create
+- Skip if `$indexStats` is unavailable (some hosted providers block it)
+
+### Acceptance
+- `mongospectre check` produces compound index suggestions with ESR ordering
+- Suggestions include which existing indexes they would replace
+- Frequency-based scoring ranks suggestions by impact
+- `make test && make lint` clean
+
+---
+
+## WO-37: Schema Sampling & Field-Level Drift Detection
+
+**Goal:** Sample documents from each collection to detect field-level drift between code and live data.
+
+### Problem
+Current drift detection is collection-level only. Code might reference `user.address.zipCode` but the actual documents use `user.address.zip`. This is invisible to the current tool.
+
+### Approach
+1. Sample N documents per collection (default: 100, configurable)
+2. Build a field frequency map: `{fieldPath: count}` for each collection
+3. Compare code `FieldRef`s against the frequency map
+4. Flag fields referenced in code but absent from sampled documents
+
+### Detections
+- **MISSING_FIELD**: code references `orders.shippingAddress` but 0/100 sampled docs have it
+- **RARE_FIELD**: code references `users.middleName` but only 3/100 docs have it (nullable or new field)
+- **UNDOCUMENTED_FIELD**: field exists in 95/100 docs but no code references it (potential dead data)
+- **TYPE_INCONSISTENCY**: field `users.age` is `int` in 80 docs but `string` in 20 docs
+
+### Inspector Changes
+1. Add `SampleDocuments(ctx, database, collection, n)` to inspector
+2. Return `FieldMap{Path: string, Count: int, Types: []string}`
+3. Use `$sample` aggregation stage for random sampling
+4. Recursively flatten nested documents to dot-notation paths
+
+### Analyzer Changes
+1. Create `internal/analyzer/schema.go` — field drift detection
+2. Cross-reference `FieldRef`s from scanner against `FieldMap` from sampling
+3. Configurable thresholds: `rare_field_threshold: 0.1` (10% presence = rare)
+
+### CLI Changes
+1. Add `--sample` flag to `check` command (default: 100, 0 to disable)
+2. Schema findings appear alongside existing findings in all formats
+
+### Constraints
+- Read-only: uses `$sample`, never modifies data
+- Sampling is approximate — not a guarantee of field presence
+- Nested arrays are flattened with `[]` notation: `orders.items[].sku`
+- Skip collections with 0 documents
+
+### Acceptance
+- `mongospectre check --repo ./app --uri ... --sample 100` reports field-level drift
+- Missing, rare, and undocumented fields are detected
+- Type inconsistencies flagged with percentages
+- Sampling is configurable and can be disabled
+- `make test && make lint` clean
+
+---
+
+## WO-38: Slow Query Correlation
+
+**Goal:** Read MongoDB profiler data and correlate slow queries with code locations.
+
+### Problem
+MongoDB's profiler (`system.profile`) logs slow queries, but developers must manually match them to code. mongospectre already knows which code locations issue which queries — connecting the two identifies exactly where performance problems originate.
+
+### Approach
+1. Read `system.profile` collection (profiler level 1 or 2 must be enabled)
+2. Extract query shapes (collection, filter fields, sort fields, projection)
+3. Match profiler query shapes against code scanner `FieldRef`s
+4. Report code locations that generate slow queries
+
+### Inspector Changes
+1. Add `ReadProfiler(ctx, database, limit)` to inspector
+2. Return `ProfileEntry{Collection, FilterFields, SortFields, Duration, Timestamp, PlanSummary}`
+3. Read from `db.system.profile` with limit (default: 1000 most recent)
+4. Parse `command.filter`, `command.sort`, `command.projection` from profiler docs
+
+### Detections
+- **SLOW_QUERY_SOURCE**: code at `app/handlers/orders.go:42` generates queries averaging 850ms on `orders` collection
+- **COLLECTION_SCAN_SOURCE**: code at `app/models/user.go:15` generates COLLSCAN (no index used) — links to profiler entry
+- **FREQUENT_SLOW_QUERY**: same query shape appears 50+ times in profiler — high-impact optimization target
+
+### CLI Changes
+1. Add `--profile` flag to `check` command (reads profiler, default: off)
+2. Add `--profile-limit` flag (default: 1000)
+
+### Constraints
+- Read-only: never modifies profiler settings
+- Profiler must be enabled by the user (`db.setProfilingLevel(1)`)
+- If profiler is disabled or empty, skip gracefully with a hint
+- Never log query values — only field names and shapes
+
+### Acceptance
+- `mongospectre check --repo ./app --uri ... --profile` correlates slow queries to code
+- COLLSCAN queries linked to source files
+- Works when profiler is disabled (graceful skip)
+- `make test && make lint` clean
+
+---
+
+## WO-39: Sharding Analysis
+
+**Goal:** Detect sharding misconfigurations and recommend shard key improvements.
+
+### Problem
+Sharded clusters have unique failure modes: hot shard keys, jumbo chunks, unbalanced distributions, and collections that should be sharded but aren't. None of these are visible in current audit output.
+
+### Inspector Changes
+1. Add `InspectSharding(ctx)` to inspector
+2. Query `config.shards` for shard list
+3. Query `config.collections` for shard keys
+4. Query `config.chunks` for chunk distribution
+5. Query `sh.status()` equivalent for balancer state
+6. Return `ShardInfo{Key, Chunks, Distribution, Balancer}`
+
+### Detections
+- **UNSHARDED_LARGE**: collection >10GB with no shard key — candidate for sharding
+- **MONOTONIC_SHARD_KEY**: shard key is `{_id: 1}` or `{created_at: 1}` (monotonically increasing = hot shard)
+- **UNBALANCED_CHUNKS**: one shard has >2x chunks compared to others
+- **JUMBO_CHUNKS**: chunks exceeding max size that can't be split
+- **BALANCER_DISABLED**: chunk balancer is off (intentional or accidental?)
+- **SHARD_KEY_CARDINALITY**: shard key has low cardinality (e.g., `{status: 1}` with only 3 values)
+
+### CLI Changes
+1. Add `--sharding` flag to `audit` command (opt-in — requires config database access)
+2. Sharding findings appear alongside collection findings
+
+### Constraints
+- Read-only: never modify shard configurations
+- Requires access to `config` database (available on mongos or config servers)
+- Gracefully skip if not a sharded cluster (standalone or replica set)
+- Chunk distribution analysis limits to first 10000 chunks per collection
+
+### Acceptance
+- `mongospectre audit --uri mongodb://mongos:27017 --sharding` reports shard issues
+- Detects monotonic shard keys, unbalanced chunks, jumbo chunks
+- Gracefully handles non-sharded deployments
+- `make test && make lint` clean
+
+---
+
+## WO-40: MongoDB Atlas API Integration
+
+**Goal:** Pull cloud-specific metrics and recommendations from MongoDB Atlas for richer audit context.
+
+### Problem
+Self-hosted MongoDB exposes all metadata via database commands. Atlas restricts some commands but offers a REST API with additional metrics: real-time performance data, auto-scaling events, alert history, and Atlas-specific recommendations.
+
+### Approach
+1. Accept Atlas API keys via `--atlas-public-key` and `--atlas-private-key` (or env vars)
+2. Query Atlas Admin API for project/cluster metadata
+3. Enrich audit findings with Atlas-specific context
+4. Add Atlas-only detections
+
+### Atlas API Queries
+- `GET /groups/{groupId}/clusters/{clusterName}` — cluster config (tier, version, region)
+- `GET /groups/{groupId}/clusters/{clusterName}/performanceAdvisor/suggestedIndexes` — Atlas index suggestions
+- `GET /groups/{groupId}/alerts` — active alerts
+- `GET /groups/{groupId}/clusters/{clusterName}/metrics` — real-time metrics (connections, opcounters)
+
+### Detections
+- **ATLAS_INDEX_SUGGESTION**: Atlas Performance Advisor recommends an index — cross-reference with code patterns
+- **ATLAS_ALERT_ACTIVE**: cluster has unacknowledged alerts (tickets open, connections high, etc.)
+- **ATLAS_TIER_MISMATCH**: M10 tier but 500GB data — likely needs upgrade
+- **ATLAS_VERSION_BEHIND**: cluster running MongoDB X but latest is Y
+
+### CLI Changes
+1. Add `--atlas-public-key`, `--atlas-private-key`, `--atlas-project`, `--atlas-cluster` flags
+2. Environment variables: `ATLAS_PUBLIC_KEY`, `ATLAS_PRIVATE_KEY`, `ATLAS_PROJECT_ID`
+3. Atlas findings merge with standard audit findings
+
+### Constraints
+- Read-only: never modify Atlas configuration
+- Atlas API keys are optional — tool works without them
+- Never log or output API keys
+- Rate limit API calls (Atlas has per-minute limits)
+
+### Acceptance
+- `mongospectre audit --uri ... --atlas-public-key ... --atlas-private-key ...` includes Atlas findings
+- Atlas index suggestions correlated with code patterns
+- Works without Atlas keys (graceful skip)
+- `make test && make lint` clean
+
+---
+
+## Phase 5: Developer Experience
+
+---
+
+## WO-41: Schema Validation Drift Detection
+
+**Goal:** Compare MongoDB JSON Schema validators on collections against code expectations.
+
+### Problem
+MongoDB supports JSON Schema validation on collections (`db.createCollection("users", {validator: {$jsonSchema: {...}}})}`). When code evolves but validators aren't updated, inserts fail silently or validators become stale.
+
+### Inspector Changes
+1. Add `GetValidators(ctx, database)` to inspector
+2. Query `db.listCollections({}, {nameOnly: false})` to extract `options.validator`
+3. Return `ValidatorInfo{Collection, Schema, ValidationLevel, ValidationAction}`
+
+### Detections
+- **VALIDATOR_MISSING**: code writes to collection with no schema validator (risk: unconstrained writes)
+- **VALIDATOR_STALE**: validator requires field `email` as `string` but code writes it as `{address: ..., verified: ...}` (object)
+- **VALIDATOR_STRICT_RISK**: validation action is `error` + level is `strict` — all inserts fail on mismatch
+- **VALIDATOR_WARN_ONLY**: validation action is `warn` — violations logged but not rejected (might be intentional)
+- **FIELD_NOT_IN_VALIDATOR**: code writes field `preferences` but validator's `properties` doesn't include it (will fail if `additionalProperties: false`)
+
+### Analyzer Changes
+1. Create `internal/analyzer/validator.go` — compare code field refs against validator schemas
+2. Parse JSON Schema `properties`, `required`, `additionalProperties`
+3. Flag mismatches between code write patterns and validator constraints
+
+### Acceptance
+- `mongospectre check --repo ./app --uri ...` reports validator drift
+- Detects missing validators, stale field types, strict vs warn modes
+- `make test && make lint` clean
+
+---
+
+## WO-42: Interactive TUI
+
+**Goal:** Terminal UI for exploring findings, drilling into collections, and navigating code references.
+
+### Problem
+Large reports (100+ findings) are hard to scan in text or JSON output. An interactive TUI lets users filter, sort, and drill into findings without leaving the terminal.
+
+### Technology
+- Use `charmbracelet/bubbletea` for TUI framework
+- Use `charmbracelet/lipgloss` for styling
+- Use `charmbracelet/bubbles` for tables, text inputs, viewports
+
+### Features
+- **Finding list**: sortable table of findings with severity, type, collection, message
+- **Detail view**: expand a finding to see full context (index definition, code locations, suggested fix)
+- **Filter bar**: type to filter by collection, severity, or finding type
+- **Code view**: show scanner refs (file:line) with syntax highlighting
+- **Severity summary**: header bar showing count by severity (similar to `htop`)
+- **Export**: `e` key exports current filtered view to JSON
+
+### CLI Changes
+1. Add `--interactive` / `-i` flag to `audit` and `check` commands
+2. Default to interactive mode when stdout is a TTY and finding count > 20
+3. `--no-interactive` to force non-interactive mode
+
+### Constraints
+- TUI is optional — default behavior unchanged for CI/scripting
+- No network calls from TUI — operates on already-fetched data
+- Fallback to text output if terminal doesn't support TUI
+
+### Acceptance
+- `mongospectre audit --uri ... -i` launches interactive TUI
+- Findings are filterable and sortable
+- Detail view shows actionable context
+- Non-TTY environments get normal text output
+- `make test && make lint` clean
+
+---
+
+## WO-43: VS Code Extension
+
+**Goal:** Show mongospectre findings inline in VS Code as diagnostics on collection references.
+
+### Problem
+Developers see mongospectre findings in CI or terminal reports but must manually map them back to code locations. An IDE extension surfaces findings exactly where the code is.
+
+### Technology
+- VS Code extension in TypeScript
+- Language Server Protocol (LSP) for diagnostics
+- Runs `mongospectre check --format json` in the background
+
+### Features
+- **Inline diagnostics**: squiggly underlines on `db.Collection("missing_collection")` with finding message
+- **Hover info**: hover on collection name shows index info, document count, last query time
+- **Quick fix**: suggest adding to `.mongospectreignore` for known-OK findings
+- **Status bar**: show finding count (e.g., "mongospectre: 3 issues")
+- **Auto-refresh**: re-run on file save (debounced)
+
+### Structure
+```
+vscode-mongospectre/
+  src/extension.ts     — activate, register providers
+  src/runner.ts        — execute mongospectre CLI, parse JSON output
+  src/diagnostics.ts   — map findings to VS Code Diagnostic objects
+  src/hover.ts         — collection info on hover
+  package.json         — extension manifest
+```
+
+### Configuration
+```json
+{
+  "mongospectre.uri": "mongodb://localhost:27017",
+  "mongospectre.database": "myapp",
+  "mongospectre.autoRefresh": true,
+  "mongospectre.binaryPath": "mongospectre"
+}
+```
+
+### Constraints
+- Extension calls the CLI binary — no Go code in the extension
+- Requires `mongospectre` binary installed (or bundled)
+- Findings cached until next run (no live MongoDB connection from extension)
+
+### Acceptance
+- Install from VS Code marketplace or VSIX
+- Collection references show inline diagnostics
+- Hover shows collection metadata
+- Works with Go, Python, JavaScript, TypeScript files
+- Extension published to VS Code marketplace
+
+---
+
+## WO-44: Webhook / Slack Notifications for Watch Mode
+
+**Goal:** Send alerts to Slack, webhooks, or email when `watch` mode detects new findings.
+
+### Problem
+`watch` mode prints to stdout, which is only useful if someone is watching the terminal. For production monitoring, findings should push to team communication channels.
+
+### Configuration
+```yaml
+# .mongospectre.yml
+notifications:
+  - type: slack
+    webhook_url: ${SLACK_WEBHOOK_URL}
+    on: [new_high, new_medium]
+  - type: webhook
+    url: https://api.example.com/alerts
+    method: POST
+    headers:
+      Authorization: "Bearer ${ALERT_TOKEN}"
+    on: [new_high]
+  - type: email
+    smtp_host: smtp.gmail.com
+    smtp_port: 587
+    to: ["team@example.com"]
+    on: [new_high, resolved]
+```
+
+### Features
+- **Slack**: post formatted message with finding details, severity color, and link to dashboard
+- **Webhook**: POST JSON payload with finding data to arbitrary URL
+- **Email**: SMTP-based email alerts (simple HTML template)
+- **Filters**: `on` field controls which events trigger notifications (new_high, new_medium, new_low, resolved)
+- **Rate limiting**: max 1 notification per finding per interval (avoid spam on flapping)
+- **Dry run**: `--notify-dry-run` logs what would be sent without sending
+
+### CLI Changes
+1. Add `--notify` flag to `watch` command (reads from config or flag)
+2. Add `--notify-dry-run` for testing
+3. Environment variable expansion in webhook URLs and secrets (`${VAR}` syntax)
+
+### Constraints
+- Never include MongoDB URI or credentials in notification payloads
+- Notification failures logged but don't stop watch loop
+- Secrets must come from environment variables, not plaintext in config
+
+### Acceptance
+- `mongospectre watch --uri ... --notify` sends Slack messages on new findings
+- Webhook integration works with generic endpoints
+- Rate limiting prevents notification spam
+- Dry run mode logs payloads without sending
+- `make test && make lint` clean
+
+---
+
 ## Non-Goals
 
 - No schema enforcement or migrations
 - No data modification or deletion
-- No sharding management
-- No web UI
+- No web UI (TUI in WO-42 is terminal-only)
 - No password brute-forcing or credential testing (WO-27 reports patterns, not passwords)
