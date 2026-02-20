@@ -59,7 +59,20 @@ mongospectre audit --uri "mongodb://..." --format sarif > results.sarif
 
 # Continuous monitoring
 mongospectre watch --uri "mongodb://..." --interval 5m
+
+# Continuous monitoring + notifications (from .mongospectre.yml)
+mongospectre watch --uri "mongodb://..." --interval 5m --notify
 ```
+
+### Agent Integration
+
+mongospectre is designed to be used by autonomous agents without plugins or SDKs. Single binary, deterministic output, structured JSON, bounded jobs.
+
+Agents: read [`SKILL.md`](SKILL.md) for commands, flags, JSON output structure, and parsing examples.
+
+Key pattern for agents: `mongospectre audit --uri "$MONGODB_URI" --format json` then parse `.findings[]` for collection issues.
+
+Cross-tool integration: `--format spectrehub` outputs findings for [spectrehub](https://github.com/ppiankov/spectrehub) aggregation.
 
 ## Usage
 
@@ -91,11 +104,16 @@ Scans a code repository and compares collection references against live MongoDB:
 | `UNUSED_COLLECTION` | medium | Exists in DB with 0 docs, not in code |
 | `SUGGEST_INDEX` | info | Consider adding an index for queried field |
 | `ORPHANED_INDEX` | low | Unused index on unreferenced collection |
+| `SLOW_QUERY_SOURCE` | medium | Code location matches slow `system.profile` query shapes (`--profile`) |
+| `COLLECTION_SCAN_SOURCE` | high | Code location matches profiler `COLLSCAN` query (`--profile`) |
+| `FREQUENT_SLOW_QUERY` | medium | Same slow query shape appears 50+ times in profiler (`--profile`) |
 | `OK` | info | Collection exists and is referenced |
 
 ```bash
-mongospectre check --repo ./app --uri "mongodb://..." [--database mydb] [--format text|json|sarif|spectrehub] [--fail-on-missing]
+mongospectre check --repo ./app --uri "mongodb://..." [--database mydb] [--format text|json|sarif|spectrehub] [--fail-on-missing] [--profile --profile-limit 1000]
 ```
+
+`check --format json` includes scanner references (`scan`) and inspected collection metadata (`collections`) for IDE integrations.
 
 ### `compare` — Cross-Cluster Schema Diff
 
@@ -110,13 +128,15 @@ mongospectre compare --source "mongodb://staging:27017" --target "mongodb://prod
 Runs `audit` on a configurable interval and prints only new/resolved findings:
 
 ```bash
-mongospectre watch --uri "mongodb://..." --interval 5m [--format text|json] [--exit-on-new]
+mongospectre watch --uri "mongodb://..." --interval 5m [--format text|json] [--exit-on-new] [--notify] [--notify-dry-run]
 ```
 
 - First run: full audit with all findings
 - Subsequent runs: prints only `+ [new]` and `- [resolved]` changes
 - `--exit-on-new`: exit with code 2 on first new high-severity finding (for CI)
 - `--format json`: outputs NDJSON events (one per line)
+- `--notify`: sends alerts to Slack/webhook/email channels configured in `.mongospectre.yml`
+- `--notify-dry-run`: logs notification payloads without sending network requests
 - Ctrl+C: prints summary and exits cleanly
 
 ### `init` — Scaffold Config Files
@@ -154,6 +174,30 @@ Multi-arch images (amd64/arm64) are published to `ghcr.io/ppiankov/mongospectre`
 
 See `action/action.yml` for all inputs and outputs. More CI examples in `docs/ci-examples.md`.
 
+### VS Code Extension
+
+`vscode-mongospectre/` contains the VS Code extension that runs `mongospectre check --format json` in the background and surfaces:
+
+- inline diagnostics on collection references
+- hover metadata (document count + index stats)
+- quick-fix ignore rules for `.mongospectreignore`
+
+Install from Marketplace:
+
+```bash
+code --install-extension ppiankov.mongospectre
+```
+
+Or build/install as VSIX:
+
+```bash
+cd vscode-mongospectre
+npm install
+npm run package:vsix
+```
+
+Then install via `Extensions -> ... -> Install from VSIX...`.
+
 ### Baseline Comparison
 
 Compare current findings against a previous report to track drift over time:
@@ -185,10 +229,29 @@ uri: mongodb://localhost:27017
 defaults:
   verbose: false
   timeout: 30s
-  database: myapp
+notifications:
+  - type: slack
+    webhook_url: ${SLACK_WEBHOOK_URL}
+    on: [new_high, new_medium]
+  - type: webhook
+    url: https://alerts.example.com/mongospectre
+    method: POST
+    headers:
+      Authorization: "Bearer ${ALERT_TOKEN}"
+    on: [new_high]
+  - type: email
+    smtp_host: smtp.gmail.com
+    smtp_port: 587
+    from: alerts@example.com
+    to: ["team@example.com"]
+    smtp_username: ${SMTP_USERNAME}
+    smtp_password: ${SMTP_PASSWORD}
+    on: [new_high, resolved]
 ```
 
 CLI flags override config file values. The `MONGODB_URI` environment variable also works.
+Notification event filters support: `new_high`, `new_medium`, `new_low`, `resolved`.
+For security, secrets must come from environment placeholders (`${VAR}`): Slack `webhook_url`, sensitive webhook headers (for example `Authorization`), and `smtp_password`.
 
 ### `.mongospectreignore`
 
