@@ -11,17 +11,20 @@ import (
 
 	"github.com/ppiankov/mongospectre/internal/analyzer"
 	mongoinspect "github.com/ppiankov/mongospectre/internal/mongo"
+	"github.com/ppiankov/mongospectre/internal/notify"
 	"github.com/ppiankov/mongospectre/internal/reporter"
 	"github.com/spf13/cobra"
 )
 
 func newWatchCmd() *cobra.Command {
 	var (
-		database  string
-		interval  time.Duration
-		format    string
-		exitOnNew bool
-		noIgnore  bool
+		database      string
+		interval      time.Duration
+		format        string
+		exitOnNew     bool
+		noIgnore      bool
+		notifyEnabled bool
+		notifyDryRun  bool
 	)
 
 	cmd := &cobra.Command{
@@ -29,8 +32,30 @@ func newWatchCmd() *cobra.Command {
 		Short: "Continuously monitor a MongoDB cluster and report drift",
 		Long:  "Runs audit on a configurable interval, compares each run against the previous, and prints only new/resolved findings.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateFormat(format, "text", "json"); err != nil {
+				return err
+			}
 			if uri == "" {
 				return fmt.Errorf("--uri is required (or set MONGODB_URI)")
+			}
+			if notifyDryRun {
+				notifyEnabled = true
+			}
+
+			var notificationDispatcher watchNotifier
+			if notifyEnabled {
+				if len(cfg.Notifications) == 0 {
+					return fmt.Errorf("--notify enabled but no notifications are configured in .mongospectre.yml")
+				}
+				dispatcher, err := notify.NewDispatcher(cfg.Notifications, notify.DispatcherOptions{
+					Interval: interval,
+					DryRun:   notifyDryRun,
+					Writer:   cmd.ErrOrStderr(),
+				})
+				if err != nil {
+					return fmt.Errorf("notifications: %w", err)
+				}
+				notificationDispatcher = dispatcher
 			}
 
 			ctx, cancel := context.WithCancel(cmd.Context())
@@ -51,6 +76,7 @@ func newWatchCmd() *cobra.Command {
 				format:    format,
 				exitOnNew: exitOnNew,
 				noIgnore:  noIgnore,
+				notifier:  notificationDispatcher,
 				cmd:       cmd,
 			}
 			return w.run(ctx)
@@ -62,8 +88,14 @@ func newWatchCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "output format: text or json (NDJSON)")
 	cmd.Flags().BoolVar(&exitOnNew, "exit-on-new", false, "exit with code 2 on first new high-severity finding")
 	cmd.Flags().BoolVar(&noIgnore, "no-ignore", false, "bypass .mongospectreignore file")
+	cmd.Flags().BoolVar(&notifyEnabled, "notify", false, "send notifications for new/resolved findings from .mongospectre.yml")
+	cmd.Flags().BoolVar(&notifyDryRun, "notify-dry-run", false, "log notification payloads without sending (implies --notify)")
 
 	return cmd
+}
+
+type watchNotifier interface {
+	Notify(ctx context.Context, events []notify.Event) error
 }
 
 type watcher struct {
@@ -73,6 +105,7 @@ type watcher struct {
 	format    string
 	exitOnNew bool
 	noIgnore  bool
+	notifier  watchNotifier
 	cmd       *cobra.Command
 }
 
@@ -158,6 +191,16 @@ func (w *watcher) run(ctx context.Context) error {
 					reporter.WriteBaselineDiff(stdout, diff)
 				}
 
+				if w.notifier != nil {
+					events := notify.EventsFromDiff(diff, time.Now().UTC())
+					if len(events) > 0 {
+						if err := w.notifier.Notify(ctx, events); err != nil {
+							_, _ = fmt.Fprintf(stderr, "[%s] notification error: %v\n",
+								time.Now().UTC().Format(time.RFC3339), err)
+						}
+					}
+				}
+
 				// Check exit-on-new for high severity.
 				if w.exitOnNew && newCount > 0 {
 					for _, d := range diff {
@@ -201,7 +244,7 @@ func (w *watcher) runAudit(ctx context.Context) ([]analyzer.Finding, error) {
 	auditCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	inspector, err := mongoinspect.NewInspector(auditCtx, mongoinspect.Config{
+	inspector, err := newInspector(auditCtx, mongoinspect.Config{
 		URI:      w.uri,
 		Database: w.database,
 	})

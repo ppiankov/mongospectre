@@ -10,11 +10,12 @@ import (
 
 // Config holds all mongospectre configuration.
 type Config struct {
-	URI        string     `yaml:"uri"`
-	Database   string     `yaml:"database"`
-	Thresholds Thresholds `yaml:"thresholds"`
-	Exclude    Exclude    `yaml:"exclude"`
-	Defaults   Defaults   `yaml:"defaults"`
+	URI           string         `yaml:"uri"`
+	Database      string         `yaml:"database"`
+	Thresholds    Thresholds     `yaml:"thresholds"`
+	Exclude       Exclude        `yaml:"exclude"`
+	Defaults      Defaults       `yaml:"defaults"`
+	Notifications []Notification `yaml:"notifications"`
 }
 
 // Thresholds control detection sensitivity.
@@ -34,6 +35,30 @@ type Defaults struct {
 	Format  string `yaml:"format"`
 	Verbose bool   `yaml:"verbose"`
 	Timeout string `yaml:"timeout"` // parsed as time.Duration
+}
+
+// Notification configures outbound watch alerts.
+type Notification struct {
+	Type string   `yaml:"type"` // slack, webhook, email
+	On   []string `yaml:"on"`   // new_high, new_medium, new_low, resolved
+
+	// Slack
+	WebhookURL   string `yaml:"webhook_url"`
+	DashboardURL string `yaml:"dashboard_url"`
+
+	// Generic webhook
+	URL     string            `yaml:"url"`
+	Method  string            `yaml:"method"`
+	Headers map[string]string `yaml:"headers"`
+
+	// Email (SMTP)
+	SMTPHost     string   `yaml:"smtp_host"`
+	SMTPPort     int      `yaml:"smtp_port"`
+	SMTPUsername string   `yaml:"smtp_username"`
+	SMTPPassword string   `yaml:"smtp_password"`
+	From         string   `yaml:"from"`
+	To           []string `yaml:"to"`
+	Subject      string   `yaml:"subject"`
 }
 
 // DefaultConfig returns the built-in defaults.

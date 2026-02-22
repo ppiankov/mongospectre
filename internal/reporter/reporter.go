@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/ppiankov/mongospectre/internal/analyzer"
+	mongoinspect "github.com/ppiankov/mongospectre/internal/mongo"
+	"github.com/ppiankov/mongospectre/internal/scanner"
 )
 
 // Format specifies the output format.
@@ -30,10 +32,12 @@ type Metadata struct {
 
 // Report holds the structured audit output.
 type Report struct {
-	Metadata    Metadata           `json:"metadata"`
-	Findings    []analyzer.Finding `json:"findings"`
-	MaxSeverity analyzer.Severity  `json:"maxSeverity"`
-	Summary     Summary            `json:"summary"`
+	Metadata    Metadata                      `json:"metadata"`
+	Findings    []analyzer.Finding            `json:"findings"`
+	MaxSeverity analyzer.Severity             `json:"maxSeverity"`
+	Summary     Summary                       `json:"summary"`
+	Scan        *scanner.ScanResult           `json:"scan,omitempty"`
+	Collections []mongoinspect.CollectionInfo `json:"collections,omitempty"`
 }
 
 // Summary counts findings by severity.

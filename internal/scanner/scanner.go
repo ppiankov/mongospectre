@@ -55,7 +55,7 @@ func Scan(repoPath string) (ScanResult, error) {
 			return nil
 		}
 
-		refs, fieldRefs, dynRefs, scanErr := scanFile(path, repoPath)
+		refs, fieldRefs, writeRefs, dynRefs, scanErr := scanFile(path, repoPath)
 		if scanErr != nil {
 			result.FilesSkipped++
 			return nil
@@ -64,6 +64,7 @@ func Scan(repoPath string) (ScanResult, error) {
 		result.FilesScanned++
 		result.Refs = append(result.Refs, refs...)
 		result.FieldRefs = append(result.FieldRefs, fieldRefs...)
+		result.WriteRefs = append(result.WriteRefs, writeRefs...)
 		result.DynamicRefs = append(result.DynamicRefs, dynRefs...)
 		return nil
 	})
@@ -77,10 +78,10 @@ func Scan(repoPath string) (ScanResult, error) {
 
 // scanFile reads a file, joins multi-line expressions, and returns collection refs,
 // field refs, and dynamic (unresolvable variable) refs.
-func scanFile(path, repoPath string) ([]CollectionRef, []FieldRef, []DynamicRef, error) {
+func scanFile(path, repoPath string) ([]CollectionRef, []FieldRef, []WriteRef, []DynamicRef, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	defer func() { _ = f.Close() }()
 
@@ -95,7 +96,7 @@ func scanFile(path, repoPath string) ([]CollectionRef, []FieldRef, []DynamicRef,
 		lines = append(lines, sc.Text())
 	}
 	if err := sc.Err(); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	joined := joinContinuationLines(lines)
@@ -103,6 +104,7 @@ func scanFile(path, repoPath string) ([]CollectionRef, []FieldRef, []DynamicRef,
 
 	var refs []CollectionRef
 	var fieldRefs []FieldRef
+	var writeRefs []WriteRef
 	var dynamicRefs []DynamicRef
 	seenDynamic := make(map[string]bool)
 
@@ -141,15 +143,38 @@ func scanFile(path, repoPath string) ([]CollectionRef, []FieldRef, []DynamicRef,
 		if lineCollection != "" {
 			for _, fm := range ScanLineFields(jl.text) {
 				fieldRefs = append(fieldRefs, FieldRef{
-					Collection: lineCollection,
-					Field:      fm.Field,
-					File:       relPath,
-					Line:       jl.lineNum,
+					Collection:   lineCollection,
+					Field:        fm.Field,
+					File:         relPath,
+					Line:         jl.lineNum,
+					Usage:        fm.Usage,
+					Direction:    fm.Direction,
+					QueryContext: fm.QueryContext,
 				})
+			}
+			if IsWriteOperation(jl.text) {
+				writes := ScanLineWriteFields(jl.text)
+				if len(writes) == 0 {
+					// Record collection-level write intent even when field extraction fails.
+					writeRefs = append(writeRefs, WriteRef{
+						Collection: lineCollection,
+						File:       relPath,
+						Line:       jl.lineNum,
+					})
+				}
+				for _, w := range writes {
+					writeRefs = append(writeRefs, WriteRef{
+						Collection: lineCollection,
+						Field:      w.Field,
+						ValueType:  w.ValueType,
+						File:       relPath,
+						Line:       jl.lineNum,
+					})
+				}
 			}
 		}
 	}
-	return refs, fieldRefs, dynamicRefs, nil
+	return refs, fieldRefs, writeRefs, dynamicRefs, nil
 }
 
 // joinedLine holds a possibly multi-line expression with its starting line number.

@@ -31,6 +31,21 @@ jobs:
           files: coverage.out
           fail_ci_if_error: false
 
+  vscode-extension:
+    name: VS Code Extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+        working-directory: vscode-mongospectre
+      - run: npm run lint
+        working-directory: vscode-mongospectre
+      - run: npm run package:vsix
+        working-directory: vscode-mongospectre
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

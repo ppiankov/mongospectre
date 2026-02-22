@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- VS Code extension in `vscode-mongospectre/` with inline diagnostics, hover metadata, quick-fix ignore actions, status bar summary, and debounced refresh
+- Extension packaging workflow (`.github/workflows/vscode-extension.yml`) for VSIX artifacts and Marketplace publish on release
+
+### Changed
+
+- `check --format json` now includes scanner payload (`scan`) and inspected collection metadata (`collections`) for IDE integrations
+
 ## [0.2.0] - 2026-02-15
 
 ### Added

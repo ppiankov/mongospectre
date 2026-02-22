@@ -24,6 +24,9 @@ func newCompareCmd() *cobra.Command {
 		Use:   "compare",
 		Short: "Compare schemas across two MongoDB clusters",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateFormat(format, "text", "json"); err != nil {
+				return err
+			}
 			if sourceURI == "" {
 				return fmt.Errorf("--source is required")
 			}
@@ -38,7 +41,7 @@ func newCompareCmd() *cobra.Command {
 			if verbose {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to source %s...\n", sourceURI)
 			}
-			sourceInspector, err := mongoinspect.NewInspector(ctx, mongoinspect.Config{
+			sourceInspector, err := newInspector(ctx, mongoinspect.Config{
 				URI:      sourceURI,
 				Database: sourceDB,
 			})
@@ -57,7 +60,7 @@ func newCompareCmd() *cobra.Command {
 			if verbose {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to target %s...\n", targetURI)
 			}
-			targetInspector, err := mongoinspect.NewInspector(ctx, mongoinspect.Config{
+			targetInspector, err := newInspector(ctx, mongoinspect.Config{
 				URI:      targetURI,
 				Database: targetDB,
 			})

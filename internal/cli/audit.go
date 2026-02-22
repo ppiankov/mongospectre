@@ -13,17 +13,30 @@ import (
 
 func newAuditCmd() *cobra.Command {
 	var (
-		database   string
-		format     string
-		noIgnore   bool
-		baseline   string
-		auditUsers bool
+		database        string
+		format          string
+		noIgnore        bool
+		baseline        string
+		auditUsers      bool
+		sharding        bool
+		atlasPublicKey  string
+		atlasPrivateKey string
+		atlasProject    string
+		atlasCluster    string
+		interactive     bool
+		noInteractive   bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "audit",
 		Short: "Audit MongoDB cluster for unused collections, indexes, and drift",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateFormat(format, "text", "json", "sarif", "spectrehub"); err != nil {
+				return err
+			}
+			if interactive && noInteractive {
+				return fmt.Errorf("--interactive and --no-interactive are mutually exclusive")
+			}
 			if uri == "" {
 				return fmt.Errorf("--uri is required (or set MONGODB_URI)")
 			}
@@ -35,7 +48,7 @@ func newAuditCmd() *cobra.Command {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s (timeout %s)...\n", uri, timeout)
 			}
 
-			inspector, err := mongoinspect.NewInspector(ctx, mongoinspect.Config{
+			inspector, err := newInspector(ctx, mongoinspect.Config{
 				URI:      uri,
 				Database: database,
 			})
@@ -101,6 +114,30 @@ func newAuditCmd() *cobra.Command {
 				findings = append(findings, userFindings...)
 			}
 
+			if sharding {
+				shardingInfo, shardingErr := inspector.InspectSharding(ctx)
+				switch {
+				case shardingErr != nil:
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: sharding analysis skipped: %v\n", shardingErr)
+				case !shardingInfo.Enabled:
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Sharding analysis skipped: deployment is not sharded.")
+				default:
+					if verbose {
+						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Inspected sharding metadata for %d collections across %d shards\n",
+							len(shardingInfo.Collections), len(shardingInfo.Shards))
+					}
+					findings = append(findings, analyzer.AuditSharding(collections, shardingInfo)...)
+				}
+			}
+
+			atlasFindings := collectAtlasFindings(ctx, cmd, atlasOptions{
+				PublicKey:  atlasPublicKey,
+				PrivateKey: atlasPrivateKey,
+				ProjectID:  atlasProject,
+				Cluster:    atlasCluster,
+			}, uri, collections)
+			findings = append(findings, atlasFindings...)
+
 			// Apply ignore file.
 			if !noIgnore {
 				cwd, _ := os.Getwd()
@@ -134,8 +171,19 @@ func newAuditCmd() *cobra.Command {
 				URIHash:        reporter.HashURI(uri),
 			}
 
-			if err := reporter.Write(cmd.OutOrStdout(), &report, reporter.Format(format)); err != nil {
-				return fmt.Errorf("write report: %w", err)
+			renderedInteractive, err := maybeRenderInteractive(cmd, &report, collections, nil, interactiveConfig{
+				force:    interactive,
+				disable:  noInteractive,
+				format:   format,
+				findings: len(findings),
+			})
+			if err != nil {
+				return err
+			}
+			if !renderedInteractive {
+				if err := reporter.Write(cmd.OutOrStdout(), &report, reporter.Format(format)); err != nil {
+					return fmt.Errorf("write report: %w", err)
+				}
 			}
 
 			code := analyzer.ExitCode(report.MaxSeverity)
@@ -154,6 +202,13 @@ func newAuditCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noIgnore, "no-ignore", false, "bypass .mongospectreignore file")
 	cmd.Flags().StringVar(&baseline, "baseline", "", "path to previous JSON report for diff comparison")
 	cmd.Flags().BoolVar(&auditUsers, "audit-users", false, "audit MongoDB user configurations (requires userAdmin role)")
+	cmd.Flags().BoolVar(&sharding, "sharding", false, "run sharding metadata analysis (requires access to config database)")
+	cmd.Flags().StringVar(&atlasPublicKey, "atlas-public-key", "", "MongoDB Atlas API public key (env: ATLAS_PUBLIC_KEY)")
+	cmd.Flags().StringVar(&atlasPrivateKey, "atlas-private-key", "", "MongoDB Atlas API private key (env: ATLAS_PRIVATE_KEY)")
+	cmd.Flags().StringVar(&atlasProject, "atlas-project", "", "MongoDB Atlas project/group ID (env: ATLAS_PROJECT_ID)")
+	cmd.Flags().StringVar(&atlasCluster, "atlas-cluster", "", "MongoDB Atlas cluster name (auto-derived from URI if possible)")
+	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "launch interactive terminal UI (text format only)")
+	cmd.Flags().BoolVar(&noInteractive, "no-interactive", false, "force non-interactive output")
 
 	return cmd
 }
