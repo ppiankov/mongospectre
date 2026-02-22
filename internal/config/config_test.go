@@ -52,6 +52,22 @@ defaults:
   format: json
   verbose: true
   timeout: 60s
+notifications:
+  - type: slack
+    webhook_url: ${SLACK_WEBHOOK_URL}
+    on: [new_high, new_medium]
+  - type: webhook
+    url: https://example.com/alerts
+    method: POST
+    headers:
+      Authorization: "Bearer ${ALERT_TOKEN}"
+    on: [new_high]
+  - type: email
+    smtp_host: smtp.example.com
+    smtp_port: 587
+    from: alerts@example.com
+    to: ["team@example.com"]
+    on: [resolved]
 `
 	if err := os.WriteFile(filepath.Join(dir, ".mongospectre.yml"), []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -88,6 +104,18 @@ defaults:
 	}
 	if cfg.Defaults.Timeout != "60s" {
 		t.Errorf("timeout = %s", cfg.Defaults.Timeout)
+	}
+	if len(cfg.Notifications) != 3 {
+		t.Fatalf("notifications = %d, want 3", len(cfg.Notifications))
+	}
+	if cfg.Notifications[0].Type != "slack" || cfg.Notifications[0].WebhookURL == "" {
+		t.Errorf("unexpected slack notification: %+v", cfg.Notifications[0])
+	}
+	if cfg.Notifications[1].Type != "webhook" || cfg.Notifications[1].Headers["Authorization"] == "" {
+		t.Errorf("unexpected webhook notification: %+v", cfg.Notifications[1])
+	}
+	if cfg.Notifications[2].Type != "email" || len(cfg.Notifications[2].To) != 1 {
+		t.Errorf("unexpected email notification: %+v", cfg.Notifications[2])
 	}
 }
 

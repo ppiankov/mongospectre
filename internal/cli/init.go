@@ -70,6 +70,26 @@ defaults:
   format: text
   verbose: false
   timeout: 30s
+
+# Optional watch notifications (used by: mongospectre watch --notify)
+# notifications:
+#   - type: slack
+#     webhook_url: ${SLACK_WEBHOOK_URL}
+#     on: [new_high, new_medium]
+#   - type: webhook
+#     url: https://alerts.example.com/mongospectre
+#     method: POST
+#     headers:
+#       Authorization: "Bearer ${ALERT_TOKEN}"
+#     on: [new_high]
+#   - type: email
+#     smtp_host: smtp.gmail.com
+#     smtp_port: 587
+#     from: alerts@example.com
+#     to: ["team@example.com"]
+#     smtp_username: ${SMTP_USERNAME}
+#     smtp_password: ${SMTP_PASSWORD}
+#     on: [new_high, resolved]
 `,
 	},
 	{

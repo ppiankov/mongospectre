@@ -2,7 +2,10 @@ package mongo
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -15,6 +18,8 @@ var systemDBs = map[string]bool{
 	"local":  true,
 	"config": true,
 }
+
+const shardingChunkAnalysisLimit int64 = 10_000
 
 // dbClient abstracts the MongoDB client operations for testability.
 type dbClient interface {
@@ -140,6 +145,29 @@ func (i *Inspector) ListCollections(ctx context.Context, dbName string) ([]Colle
 	return colls, nil
 }
 
+// GetValidators returns JSON schema validators configured on collections.
+func (i *Inspector) GetValidators(ctx context.Context, database string) ([]ValidatorInfo, error) {
+	dbs, err := i.ListDatabases(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+
+	var validators []ValidatorInfo
+	for _, db := range dbs {
+		specs, err := i.db.ListCollectionSpecs(ctx, db.Name)
+		if err != nil {
+			return nil, fmt.Errorf("list collections in %s: %w", db.Name, err)
+		}
+		for i := range specs {
+			v, ok := validatorFromSpec(db.Name, &specs[i])
+			if ok {
+				validators = append(validators, v)
+			}
+		}
+	}
+	return validators, nil
+}
+
 // GetCollectionStats populates size/count stats for a collection.
 func (i *Inspector) GetCollectionStats(ctx context.Context, dbName, collName string) (CollectionInfo, error) {
 	result := i.db.RunCommand(ctx, dbName, bson.D{{Key: "collStats", Value: collName}})
@@ -230,6 +258,66 @@ func (i *Inspector) GetServerVersion(ctx context.Context) (ServerInfo, error) {
 	return ServerInfo{Version: v}, nil
 }
 
+// ReadProfiler reads recent profiler entries from system.profile and normalizes query shapes.
+// It never modifies profiler settings and returns an empty slice when profiler data is unavailable.
+func (i *Inspector) ReadProfiler(ctx context.Context, database string, limit int64) ([]ProfileEntry, error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+
+	dbs, err := i.ListDatabases(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	if len(dbs) == 0 {
+		return nil, nil
+	}
+
+	sortByNewest := bson.D{{Key: "ts", Value: int32(-1)}}
+	entries := make([]ProfileEntry, 0)
+	missingProfileNamespaces := 0
+
+	for _, db := range dbs {
+		docs, err := i.findDocumentsWithSort(ctx, db.Name, "system.profile", nil, sortByNewest, limit)
+		if err != nil {
+			if isNamespaceNotFoundErr(err) {
+				missingProfileNamespaces++
+				continue
+			}
+			return nil, fmt.Errorf("read %s.system.profile: %w", db.Name, err)
+		}
+
+		for _, doc := range docs {
+			entry, ok := profileEntryFromDoc(db.Name, doc)
+			if ok {
+				entries = append(entries, entry)
+			}
+		}
+	}
+
+	if len(entries) == 0 {
+		// All profile namespaces missing (profiler disabled) or simply empty.
+		if missingProfileNamespaces == len(dbs) {
+			return nil, nil
+		}
+		return nil, nil
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		ti := entries[i].Timestamp
+		tj := entries[j].Timestamp
+		if ti.Equal(tj) {
+			return entries[i].DurationMillis > entries[j].DurationMillis
+		}
+		return ti.After(tj)
+	})
+
+	if int64(len(entries)) > limit {
+		entries = entries[:limit]
+	}
+	return entries, nil
+}
+
 // Inspect gathers full metadata for all collections in the given databases.
 func (i *Inspector) Inspect(ctx context.Context, database string) ([]CollectionInfo, error) {
 	dbs, err := i.ListDatabases(ctx, database)
@@ -286,6 +374,356 @@ func (i *Inspector) InspectUsers(ctx context.Context, dbName string) ([]UserInfo
 	return resp.Users, nil
 }
 
+// InspectSharding gathers sharding metadata from config collections.
+// Returns Enabled=false with no error for non-sharded deployments.
+func (i *Inspector) InspectSharding(ctx context.Context) (ShardingInfo, error) {
+	shardDocs, err := i.findDocuments(ctx, "config", "shards", bson.M{}, 0)
+	if err != nil {
+		if isNonShardedDeploymentErr(err) {
+			return ShardingInfo{}, nil
+		}
+		return ShardingInfo{}, fmt.Errorf("read config.shards: %w", err)
+	}
+	if len(shardDocs) == 0 {
+		return ShardingInfo{}, nil
+	}
+
+	info := ShardingInfo{
+		Enabled:         true,
+		BalancerEnabled: true,
+		Shards:          make([]string, 0, len(shardDocs)),
+	}
+	for _, doc := range shardDocs {
+		shardName := toString(doc["_id"])
+		if shardName == "" {
+			continue
+		}
+		info.Shards = append(info.Shards, shardName)
+	}
+	sort.Strings(info.Shards)
+
+	collectionDocs, err := i.findDocuments(ctx, "config", "collections", bson.M{
+		"dropped": bson.M{"$ne": true},
+		"key":     bson.M{"$exists": true},
+	}, 0)
+	if err != nil {
+		return ShardingInfo{}, fmt.Errorf("read config.collections: %w", err)
+	}
+
+	collections := make([]ShardedCollectionInfo, 0, len(collectionDocs))
+	collectionUUIDs := make(map[string]any, len(collectionDocs))
+	for _, doc := range collectionDocs {
+		ns := toString(doc["_id"])
+		dbName, collName := splitNamespace(ns)
+		if ns == "" || dbName == "" || collName == "" {
+			continue
+		}
+
+		collections = append(collections, ShardedCollectionInfo{
+			Namespace:         ns,
+			Database:          dbName,
+			Collection:        collName,
+			Key:               bsonAnyToKeyFields(doc["key"]),
+			ChunkDistribution: make(map[string]int64),
+		})
+		if uuid, ok := doc["uuid"]; ok {
+			collectionUUIDs[ns] = uuid
+		}
+	}
+
+	sort.Slice(collections, func(a, b int) bool {
+		return collections[a].Namespace < collections[b].Namespace
+	})
+
+	for idx := range collections {
+		filter := bson.M{"ns": collections[idx].Namespace}
+		if uuid, ok := collectionUUIDs[collections[idx].Namespace]; ok && uuid != nil {
+			filter = bson.M{"uuid": uuid}
+		}
+
+		chunkDocs, err := i.findDocuments(ctx, "config", "chunks", filter, shardingChunkAnalysisLimit+1)
+		if err != nil {
+			return ShardingInfo{}, fmt.Errorf("read config.chunks for %s: %w", collections[idx].Namespace, err)
+		}
+		if int64(len(chunkDocs)) > shardingChunkAnalysisLimit {
+			chunkDocs = chunkDocs[:shardingChunkAnalysisLimit]
+			collections[idx].ChunkLimitHit = true
+		}
+
+		var jumboCount int64
+		for _, chunk := range chunkDocs {
+			shardName := toString(chunk["shard"])
+			if shardName != "" {
+				collections[idx].ChunkDistribution[shardName]++
+				collections[idx].ChunkCount++
+			}
+			if toBool(chunk["jumbo"]) {
+				jumboCount++
+			}
+		}
+		collections[idx].JumboChunks = jumboCount
+	}
+
+	balancerDocs, err := i.findDocuments(ctx, "config", "settings", bson.M{"_id": "balancer"}, 1)
+	if err != nil {
+		if !isNamespaceNotFoundErr(err) {
+			return ShardingInfo{}, fmt.Errorf("read config.settings: %w", err)
+		}
+	} else if len(balancerDocs) > 0 {
+		info.BalancerEnabled = !toBool(balancerDocs[0]["stopped"])
+	}
+
+	info.Collections = collections
+	return info, nil
+}
+
+func (i *Inspector) findDocuments(ctx context.Context, dbName, collName string, filter bson.M, limit int64) ([]bson.M, error) {
+	return i.findDocumentsWithSort(ctx, dbName, collName, filter, nil, limit)
+}
+
+func (i *Inspector) findDocumentsWithSort(
+	ctx context.Context,
+	dbName, collName string,
+	filter bson.M,
+	sortDoc bson.D,
+	limit int64,
+) ([]bson.M, error) {
+	cmd := bson.D{{Key: "find", Value: collName}}
+	if filter != nil {
+		cmd = append(cmd, bson.E{Key: "filter", Value: filter})
+	}
+	if len(sortDoc) > 0 {
+		cmd = append(cmd, bson.E{Key: "sort", Value: sortDoc})
+	}
+	if limit > 0 {
+		cmd = append(cmd, bson.E{Key: "limit", Value: limit})
+	}
+
+	batchSize := int32(500)
+	if limit > 0 && limit < int64(batchSize) {
+		batchSize = int32(limit)
+	}
+	cmd = append(cmd, bson.E{Key: "batchSize", Value: batchSize})
+
+	var findResp struct {
+		Cursor struct {
+			ID         int64    `bson:"id"`
+			FirstBatch []bson.M `bson:"firstBatch"`
+		} `bson:"cursor"`
+	}
+	if err := i.db.RunCommand(ctx, dbName, cmd).Decode(&findResp); err != nil {
+		return nil, err
+	}
+
+	docs := append([]bson.M(nil), findResp.Cursor.FirstBatch...)
+	cursorID := findResp.Cursor.ID
+
+	if limit > 0 && int64(len(docs)) >= limit {
+		return docs[:limit], nil
+	}
+
+	for cursorID != 0 {
+		getMore := bson.D{
+			{Key: "getMore", Value: cursorID},
+			{Key: "collection", Value: collName},
+			{Key: "batchSize", Value: batchSize},
+		}
+		if limit > 0 {
+			remaining := limit - int64(len(docs))
+			if remaining <= 0 {
+				break
+			}
+			if remaining < int64(batchSize) {
+				getMore[2].Value = int32(remaining)
+			}
+		}
+
+		var getMoreResp struct {
+			Cursor struct {
+				ID        int64    `bson:"id"`
+				NextBatch []bson.M `bson:"nextBatch"`
+			} `bson:"cursor"`
+		}
+		if err := i.db.RunCommand(ctx, dbName, getMore).Decode(&getMoreResp); err != nil {
+			return nil, err
+		}
+
+		docs = append(docs, getMoreResp.Cursor.NextBatch...)
+		cursorID = getMoreResp.Cursor.ID
+		if limit > 0 && int64(len(docs)) >= limit {
+			return docs[:limit], nil
+		}
+	}
+
+	return docs, nil
+}
+
+func profileEntryFromDoc(defaultDB string, doc bson.M) (ProfileEntry, bool) {
+	command := toBsonM(doc["command"])
+	collName := profileCollectionFromCommand(command)
+	nsDB, nsColl := splitNamespace(toString(doc["ns"]))
+	if collName == "" {
+		collName = nsColl
+	}
+	if collName == "" {
+		return ProfileEntry{}, false
+	}
+
+	dbName := defaultDB
+	if nsDB != "" {
+		dbName = nsDB
+	}
+
+	filterFields := extractProfileFields(nil)
+	sortFields := extractProfileFields(nil)
+	projectionFields := extractProfileFields(nil)
+	if command != nil {
+		filterFields = extractProfileFields(command["filter"])
+		sortFields = extractProfileFields(command["sort"])
+		projectionFields = extractProfileFields(command["projection"])
+	}
+	if len(filterFields) == 0 {
+		// Older profiler payloads may store query predicates under "query".
+		filterFields = extractProfileFields(doc["query"])
+	}
+
+	durationMillis := toInt64(doc["millis"])
+	if durationMillis == 0 {
+		durationMillis = toInt64(doc["durationMillis"])
+	}
+
+	return ProfileEntry{
+		Database:         dbName,
+		Collection:       collName,
+		FilterFields:     filterFields,
+		SortFields:       sortFields,
+		ProjectionFields: projectionFields,
+		DurationMillis:   durationMillis,
+		Timestamp:        toTime(doc["ts"]),
+		PlanSummary:      toString(doc["planSummary"]),
+	}, true
+}
+
+func profileCollectionFromCommand(command bson.M) string {
+	if command == nil {
+		return ""
+	}
+
+	for _, key := range []string{"find", "aggregate", "count", "distinct", "delete", "update", "findAndModify", "findandmodify"} {
+		if collName := toString(command[key]); collName != "" {
+			return collName
+		}
+	}
+	return ""
+}
+
+func extractProfileFields(v any) []string {
+	seen := make(map[string]bool)
+	var fields []string
+	walkProfileFields(v, "", seen, &fields)
+	sort.Strings(fields)
+	return fields
+}
+
+func walkProfileFields(v any, prefix string, seen map[string]bool, fields *[]string) {
+	switch value := v.(type) {
+	case bson.M:
+		for key, nested := range value {
+			walkProfileFieldEntry(key, nested, prefix, seen, fields)
+		}
+	case map[string]any:
+		for key, nested := range value {
+			walkProfileFieldEntry(key, nested, prefix, seen, fields)
+		}
+	case bson.D:
+		for _, entry := range value {
+			walkProfileFieldEntry(entry.Key, entry.Value, prefix, seen, fields)
+		}
+	case bson.A:
+		for _, nested := range value {
+			walkProfileFields(nested, prefix, seen, fields)
+		}
+	case []any:
+		for _, nested := range value {
+			walkProfileFields(nested, prefix, seen, fields)
+		}
+	}
+}
+
+func walkProfileFieldEntry(key string, value any, prefix string, seen map[string]bool, fields *[]string) {
+	if key == "" {
+		return
+	}
+	if strings.HasPrefix(key, "$") {
+		walkProfileFields(value, prefix, seen, fields)
+		return
+	}
+
+	name := key
+	if prefix != "" {
+		name = prefix + "." + key
+	}
+	if !seen[name] {
+		seen[name] = true
+		*fields = append(*fields, name)
+	}
+	walkProfileFields(value, name, seen, fields)
+}
+
+func bsonAnyToKeyFields(v any) []KeyField {
+	switch keyDoc := v.(type) {
+	case bson.D:
+		out := make([]KeyField, 0, len(keyDoc))
+		for _, e := range keyDoc {
+			out = append(out, KeyField{Field: e.Key, Direction: int(toInt64(e.Value))})
+		}
+		return out
+	case bson.M:
+		out := make([]KeyField, 0, len(keyDoc))
+		for field, dir := range keyDoc {
+			out = append(out, KeyField{Field: field, Direction: int(toInt64(dir))})
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i].Field < out[j].Field })
+		return out
+	default:
+		return nil
+	}
+}
+
+func splitNamespace(ns string) (string, string) {
+	parts := strings.SplitN(ns, ".", 2)
+	if len(parts) != 2 {
+		return "", ""
+	}
+	return parts[0], parts[1]
+}
+
+func isNamespaceNotFoundErr(err error) bool {
+	var cmdErr mongo.CommandError
+	if errors.As(err, &cmdErr) && cmdErr.Code == 26 {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "namespace") && strings.Contains(msg, "not found")
+}
+
+func isNonShardedDeploymentErr(err error) bool {
+	if isNamespaceNotFoundErr(err) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not running with --configsvr") ||
+		strings.Contains(msg, "not supported on mongod") ||
+		strings.Contains(msg, "does not support sharding")
+}
+
+func toBool(v any) bool {
+	b, _ := v.(bool)
+	return b
+}
+
 // toInt64 converts a BSON numeric value to int64.
 func toInt64(v any) int64 {
 	switch n := v.(type) {
@@ -327,6 +765,163 @@ func toBsonM(v any) bson.M {
 	default:
 		return nil
 	}
+}
+
+func validatorFromSpec(dbName string, spec *mongo.CollectionSpecification) (ValidatorInfo, bool) {
+	if len(spec.Options) == 0 {
+		return ValidatorInfo{}, false
+	}
+
+	var opts bson.M
+	if err := bson.Unmarshal(spec.Options, &opts); err != nil {
+		return ValidatorInfo{}, false
+	}
+
+	validator := toBsonM(opts["validator"])
+	if validator == nil {
+		return ValidatorInfo{}, false
+	}
+
+	jsonSchema := toBsonM(validator["$jsonSchema"])
+	if jsonSchema == nil {
+		return ValidatorInfo{}, false
+	}
+
+	return ValidatorInfo{
+		Collection:       spec.Name,
+		Database:         dbName,
+		Schema:           parseValidatorSchema(jsonSchema),
+		ValidationLevel:  toString(opts["validationLevel"]),
+		ValidationAction: toString(opts["validationAction"]),
+	}, true
+}
+
+func parseValidatorSchema(schema bson.M) ValidatorSchema {
+	out := ValidatorSchema{
+		Required:             parseStringArray(schema["required"]),
+		AdditionalProperties: parseBoolPointer(schema["additionalProperties"]),
+	}
+
+	props := toBsonM(schema["properties"])
+	if len(props) == 0 {
+		return out
+	}
+
+	out.Properties = make(map[string]ValidatorField, len(props))
+	for field, raw := range props {
+		fieldSchema := toBsonM(raw)
+		if fieldSchema == nil {
+			continue
+		}
+		types := parseBSONTypes(fieldSchema["bsonType"])
+		if len(types) == 0 {
+			types = parseBSONTypes(fieldSchema["type"])
+		}
+		out.Properties[field] = ValidatorField{BSONTypes: types}
+	}
+	return out
+}
+
+func parseBSONTypes(v any) []string {
+	switch t := v.(type) {
+	case string:
+		normalized := normalizeBSONType(t)
+		if normalized == "" {
+			return nil
+		}
+		return []string{normalized}
+	case []string:
+		out := make([]string, 0, len(t))
+		for _, it := range t {
+			if normalized := normalizeBSONType(it); normalized != "" {
+				out = append(out, normalized)
+			}
+		}
+		return out
+	case []any:
+		out := make([]string, 0, len(t))
+		for _, it := range t {
+			s, ok := it.(string)
+			if !ok {
+				continue
+			}
+			if normalized := normalizeBSONType(s); normalized != "" {
+				out = append(out, normalized)
+			}
+		}
+		return out
+	case bson.A:
+		out := make([]string, 0, len(t))
+		for _, it := range t {
+			s, ok := it.(string)
+			if !ok {
+				continue
+			}
+			if normalized := normalizeBSONType(s); normalized != "" {
+				out = append(out, normalized)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func normalizeBSONType(s string) string {
+	s = strings.TrimSpace(strings.ToLower(s))
+	if s == "" {
+		return ""
+	}
+	switch s {
+	case "int", "long", "double", "decimal":
+		return "number"
+	case "boolean":
+		return "bool"
+	case "objectid":
+		return "objectId"
+	default:
+		return s
+	}
+}
+
+func parseStringArray(v any) []string {
+	switch arr := v.(type) {
+	case []string:
+		return append([]string(nil), arr...)
+	case []any:
+		out := make([]string, 0, len(arr))
+		for _, item := range arr {
+			s, ok := item.(string)
+			if ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	case bson.A:
+		out := make([]string, 0, len(arr))
+		for _, item := range arr {
+			s, ok := item.(string)
+			if ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func parseBoolPointer(v any) *bool {
+	b, ok := v.(bool)
+	if !ok {
+		return nil
+	}
+	return &b
+}
+
+func toString(v any) string {
+	s, _ := v.(string)
+	return s
 }
 
 // bsonRawToKeyFields converts a bson.Raw key document to ordered []KeyField.

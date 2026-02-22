@@ -282,3 +282,27 @@ func TestUniqueCollections(t *testing.T) {
 		t.Errorf("expected sorted [orders products users], got %v", unique)
 	}
 }
+
+func TestScan_WriteRefs(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "app.js", `db.collection("users").insertOne({"email": "a@x.com", "profile": {"verified": true}})`)
+
+	result, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(result.WriteRefs) == 0 {
+		t.Fatal("expected write refs to be detected")
+	}
+	types := make(map[string]string)
+	for _, wr := range result.WriteRefs {
+		types[wr.Field] = wr.ValueType
+	}
+	if types["email"] != ValueTypeString {
+		t.Fatalf("email write type = %q, want string", types["email"])
+	}
+	if types["profile"] != ValueTypeObject {
+		t.Fatalf("profile write type = %q, want object", types["profile"])
+	}
+}

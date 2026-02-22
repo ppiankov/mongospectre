@@ -27,6 +27,10 @@ func collInfo(name, db string, docCount int64, indexes ...mongoinspect.IndexInfo
 	}
 }
 
+func boolPtr(v bool) *bool {
+	return &v
+}
+
 func TestDiff_MissingCollection(t *testing.T) {
 	scan := scanResult("users", "orders")
 	colls := []mongoinspect.CollectionInfo{
@@ -349,4 +353,159 @@ func TestDiff_UnindexedQuery_MissingCollection(t *testing.T) {
 			t.Error("should not report UNINDEXED_QUERY for missing collection")
 		}
 	}
+}
+
+func TestDiff_ValidatorMissing(t *testing.T) {
+	scan := scanner.ScanResult{
+		Refs:        []scanner.CollectionRef{{Collection: "users", File: "app.go", Line: 1}},
+		Collections: []string{"users"},
+		WriteRefs: []scanner.WriteRef{
+			{Collection: "users", Field: "email", ValueType: scanner.ValueTypeString, File: "app.go", Line: 10},
+		},
+	}
+	colls := []mongoinspect.CollectionInfo{
+		collInfo("users", "app", 100),
+	}
+
+	findings := Diff(&scan, colls)
+
+	found := false
+	for _, f := range findings {
+		if f.Type == FindingValidatorMissing {
+			found = true
+			if f.Severity != SeverityMedium {
+				t.Fatalf("validator missing severity = %s, want medium", f.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected VALIDATOR_MISSING finding")
+	}
+}
+
+func TestDiff_ValidatorStaleAndStrictRisk(t *testing.T) {
+	scan := scanner.ScanResult{
+		Refs:        []scanner.CollectionRef{{Collection: "users", File: "app.go", Line: 1}},
+		Collections: []string{"users"},
+		WriteRefs: []scanner.WriteRef{
+			{Collection: "users", Field: "email", ValueType: scanner.ValueTypeObject, File: "app.go", Line: 10},
+		},
+	}
+	colls := []mongoinspect.CollectionInfo{
+		{
+			Name:     "users",
+			Database: "app",
+			DocCount: 100,
+			Validator: &mongoinspect.ValidatorInfo{
+				Collection:       "users",
+				Database:         "app",
+				ValidationLevel:  "strict",
+				ValidationAction: "error",
+				Schema: mongoinspect.ValidatorSchema{
+					Properties: map[string]mongoinspect.ValidatorField{
+						"email": {BSONTypes: []string{"string"}},
+					},
+				},
+			},
+		},
+	}
+
+	findings := Diff(&scan, colls)
+
+	var stale, strict bool
+	for _, f := range findings {
+		if f.Type == FindingValidatorStale {
+			stale = true
+			if f.Severity != SeverityHigh {
+				t.Fatalf("validator stale severity = %s, want high in strict/error mode", f.Severity)
+			}
+		}
+		if f.Type == FindingValidatorStrictRisk {
+			strict = true
+		}
+	}
+	if !stale {
+		t.Fatal("expected VALIDATOR_STALE finding")
+	}
+	if !strict {
+		t.Fatal("expected VALIDATOR_STRICT_RISK finding")
+	}
+}
+
+func TestDiff_ValidatorWarnOnly(t *testing.T) {
+	scan := scanner.ScanResult{
+		Refs:        []scanner.CollectionRef{{Collection: "users", File: "app.go", Line: 1}},
+		Collections: []string{"users"},
+		WriteRefs: []scanner.WriteRef{
+			{Collection: "users", Field: "email", ValueType: scanner.ValueTypeString, File: "app.go", Line: 10},
+		},
+	}
+	colls := []mongoinspect.CollectionInfo{
+		{
+			Name:     "users",
+			Database: "app",
+			DocCount: 100,
+			Validator: &mongoinspect.ValidatorInfo{
+				Collection:       "users",
+				Database:         "app",
+				ValidationLevel:  "moderate",
+				ValidationAction: "warn",
+				Schema: mongoinspect.ValidatorSchema{
+					Properties: map[string]mongoinspect.ValidatorField{
+						"email": {BSONTypes: []string{"string"}},
+					},
+				},
+			},
+		},
+	}
+
+	findings := Diff(&scan, colls)
+
+	for _, f := range findings {
+		if f.Type == FindingValidatorWarnOnly {
+			return
+		}
+	}
+	t.Fatal("expected VALIDATOR_WARN_ONLY finding")
+}
+
+func TestDiff_FieldNotInValidator(t *testing.T) {
+	scan := scanner.ScanResult{
+		Refs:        []scanner.CollectionRef{{Collection: "users", File: "app.go", Line: 1}},
+		Collections: []string{"users"},
+		WriteRefs: []scanner.WriteRef{
+			{Collection: "users", Field: "preferences", ValueType: scanner.ValueTypeObject, File: "app.go", Line: 10},
+		},
+	}
+	colls := []mongoinspect.CollectionInfo{
+		{
+			Name:     "users",
+			Database: "app",
+			DocCount: 100,
+			Validator: &mongoinspect.ValidatorInfo{
+				Collection:       "users",
+				Database:         "app",
+				ValidationLevel:  "strict",
+				ValidationAction: "error",
+				Schema: mongoinspect.ValidatorSchema{
+					AdditionalProperties: boolPtr(false),
+					Properties: map[string]mongoinspect.ValidatorField{
+						"email": {BSONTypes: []string{"string"}},
+					},
+				},
+			},
+		},
+	}
+
+	findings := Diff(&scan, colls)
+
+	for _, f := range findings {
+		if f.Type == FindingFieldNotInValidator {
+			if f.Severity != SeverityHigh {
+				t.Fatalf("FIELD_NOT_IN_VALIDATOR severity = %s, want high for strict/error validator", f.Severity)
+			}
+			return
+		}
+	}
+	t.Fatal("expected FIELD_NOT_IN_VALIDATOR finding")
 }

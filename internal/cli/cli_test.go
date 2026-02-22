@@ -228,7 +228,7 @@ func TestAuditHelpFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	for _, flag := range []string{"--database", "--format", "--no-ignore", "--baseline"} {
+	for _, flag := range []string{"--database", "--format", "--no-ignore", "--baseline", "--interactive", "--no-interactive"} {
 		if !strings.Contains(help, flag) {
 			t.Errorf("audit --help missing %s", flag)
 		}
@@ -244,7 +244,7 @@ func TestCheckHelpFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	for _, flag := range []string{"--repo", "--database", "--format", "--fail-on-missing", "--no-ignore", "--baseline"} {
+	for _, flag := range []string{"--repo", "--database", "--format", "--fail-on-missing", "--no-ignore", "--baseline", "--interactive", "--no-interactive"} {
 		if !strings.Contains(help, flag) {
 			t.Errorf("check --help missing %s", flag)
 		}
@@ -276,10 +276,20 @@ func TestWatchHelpFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	for _, flag := range []string{"--interval", "--format", "--exit-on-new", "--no-ignore"} {
+	for _, flag := range []string{"--interval", "--format", "--exit-on-new", "--no-ignore", "--notify", "--notify-dry-run"} {
 		if !strings.Contains(help, flag) {
 			t.Errorf("watch --help missing %s", flag)
 		}
+	}
+}
+
+func TestWatchNotifyRequiresConfiguredChannels(t *testing.T) {
+	_, _, err := execCLI(t, "watch", "--uri", "mongodb://stub", "--notify", "--interval", "1ms")
+	if err == nil {
+		t.Fatal("expected error when --notify is enabled without notification config")
+	}
+	if !strings.Contains(err.Error(), "no notifications are configured") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

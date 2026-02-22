@@ -20,6 +20,7 @@ type mockClient struct {
 	collSpecsErr  error
 	runCmdResult  bson.Raw
 	runCmdErr     error
+	runCmdHook    func(dbName string, cmd any) (bson.Raw, error)
 	indexSpecs    []mongo.IndexSpecification
 	indexSpecsErr error
 	aggregateErr  error
@@ -43,9 +44,17 @@ func (m *mockClient) ListCollectionSpecs(ctx context.Context, dbName string) ([]
 }
 
 func (m *mockClient) RunCommand(ctx context.Context, dbName string, cmd any) *mongo.SingleResult {
+	if m.runCmdHook != nil {
+		raw, err := m.runCmdHook(dbName, cmd)
+		if err != nil {
+			return mongo.NewSingleResultFromDocument(bson.D{}, err, nil)
+		}
+		return mongo.NewSingleResultFromDocument(raw, nil, nil)
+	}
+
 	if m.runCmdErr != nil || m.runCmdResult == nil {
 		// Return a SingleResult that will error on Decode.
-		return mongo.NewSingleResultFromDocument(nil, m.runCmdErr, nil)
+		return mongo.NewSingleResultFromDocument(bson.D{}, m.runCmdErr, nil)
 	}
 	return mongo.NewSingleResultFromDocument(m.runCmdResult, nil, nil)
 }
@@ -275,6 +284,78 @@ func TestListCollections_Error(t *testing.T) {
 	_, err := insp.ListCollections(context.TODO(), "app")
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestGetValidators(t *testing.T) {
+	options, err := bson.Marshal(bson.M{
+		"validator": bson.M{
+			"$jsonSchema": bson.M{
+				"required":             bson.A{"email"},
+				"additionalProperties": false,
+				"properties": bson.M{
+					"email": bson.M{"bsonType": "string"},
+					"age":   bson.M{"bsonType": bson.A{"int", "null"}},
+				},
+			},
+		},
+		"validationLevel":  "strict",
+		"validationAction": "error",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mc := &mockClient{
+		collSpecs: []mongo.CollectionSpecification{
+			{Name: "users", Type: "collection", Options: options},
+			{Name: "events", Type: "collection"},
+		},
+	}
+	insp := &Inspector{db: mc}
+
+	validators, err := insp.GetValidators(context.TODO(), "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(validators) != 1 {
+		t.Fatalf("expected 1 validator, got %d", len(validators))
+	}
+	v := validators[0]
+	if v.Database != "app" || v.Collection != "users" {
+		t.Fatalf("validator target = %s.%s, want app.users", v.Database, v.Collection)
+	}
+	if v.ValidationLevel != "strict" || v.ValidationAction != "error" {
+		t.Fatalf("mode = %s/%s, want strict/error", v.ValidationLevel, v.ValidationAction)
+	}
+	if len(v.Schema.Required) != 1 || v.Schema.Required[0] != "email" {
+		t.Fatalf("required = %v, want [email]", v.Schema.Required)
+	}
+	if v.Schema.AdditionalProperties == nil || *v.Schema.AdditionalProperties {
+		t.Fatalf("additionalProperties = %v, want false", v.Schema.AdditionalProperties)
+	}
+	if got := v.Schema.Properties["email"].BSONTypes; len(got) != 1 || got[0] != "string" {
+		t.Fatalf("email bson types = %v, want [string]", got)
+	}
+	if got := v.Schema.Properties["age"].BSONTypes; len(got) != 2 || got[0] != "number" || got[1] != "null" {
+		t.Fatalf("age bson types = %v, want [number null]", got)
+	}
+}
+
+func TestGetValidators_InvalidOptionsIgnored(t *testing.T) {
+	mc := &mockClient{
+		collSpecs: []mongo.CollectionSpecification{
+			{Name: "users", Type: "collection", Options: bson.Raw{0xFF}},
+		},
+	}
+	insp := &Inspector{db: mc}
+
+	validators, err := insp.GetValidators(context.TODO(), "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(validators) != 0 {
+		t.Fatalf("expected 0 validators, got %d", len(validators))
 	}
 }
 
@@ -637,4 +718,275 @@ func TestInspectUsers_Error(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
+}
+
+func TestInspectSharding_NonShardedDeployment(t *testing.T) {
+	mc := &mockClient{
+		runCmdHook: func(dbName string, cmd any) (bson.Raw, error) {
+			return nil, mongo.CommandError{Code: 26, Message: "NamespaceNotFound: config.shards"}
+		},
+	}
+	insp := &Inspector{db: mc}
+
+	info, err := insp.InspectSharding(context.TODO())
+	if err != nil {
+		t.Fatalf("InspectSharding returned error for non-sharded deployment: %v", err)
+	}
+	if info.Enabled {
+		t.Fatalf("expected sharding disabled, got %+v", info)
+	}
+	if info.BalancerEnabled {
+		t.Fatalf("balancer should be false when sharding is disabled")
+	}
+}
+
+func TestInspectSharding(t *testing.T) {
+	eventsChunks := make([]bson.M, 0, 10)
+	for i := 0; i < 9; i++ {
+		eventsChunks = append(eventsChunks, bson.M{"shard": "shardA"})
+	}
+	eventsChunks = append(eventsChunks, bson.M{"shard": "shardB", "jumbo": true})
+
+	mc := &mockClient{
+		runCmdHook: func(dbName string, cmd any) (bson.Raw, error) {
+			command, ok := cmd.(bson.D)
+			if !ok {
+				return nil, errors.New("expected bson.D command")
+			}
+
+			commandName := command[0].Key
+			if commandName != "find" {
+				return nil, errors.New("unexpected command")
+			}
+
+			collName := toString(lookupBSONValue(command, "find"))
+			filter := toBsonM(lookupBSONValue(command, "filter"))
+
+			switch collName {
+			case "shards":
+				return mustMarshalRaw(t, bson.M{
+					"cursor": bson.M{
+						"id":         int64(0),
+						"firstBatch": []bson.M{{"_id": "shardA"}, {"_id": "shardB"}},
+					},
+				}), nil
+			case "collections":
+				return mustMarshalRaw(t, bson.M{
+					"cursor": bson.M{
+						"id": int64(0),
+						"firstBatch": []bson.M{
+							{"_id": "app.events", "key": bson.D{{Key: "_id", Value: 1}}},
+							{"_id": "app.orders", "key": bson.D{{Key: "customer_id", Value: 1}}},
+						},
+					},
+				}), nil
+			case "chunks":
+				ns := toString(filter["ns"])
+				switch ns {
+				case "app.events":
+					return mustMarshalRaw(t, bson.M{
+						"cursor": bson.M{
+							"id":         int64(0),
+							"firstBatch": eventsChunks,
+						},
+					}), nil
+				case "app.orders":
+					return mustMarshalRaw(t, bson.M{
+						"cursor": bson.M{
+							"id": int64(0),
+							"firstBatch": []bson.M{
+								{"shard": "shardA"},
+								{"shard": "shardA"},
+								{"shard": "shardB"},
+								{"shard": "shardB"},
+							},
+						},
+					}), nil
+				default:
+					return nil, errors.New("unexpected chunks filter")
+				}
+			case "settings":
+				return mustMarshalRaw(t, bson.M{
+					"cursor": bson.M{
+						"id":         int64(0),
+						"firstBatch": []bson.M{{"_id": "balancer", "stopped": true}},
+					},
+				}), nil
+			default:
+				return nil, errors.New("unexpected collection command")
+			}
+		},
+	}
+	insp := &Inspector{db: mc}
+
+	info, err := insp.InspectSharding(context.TODO())
+	if err != nil {
+		t.Fatalf("InspectSharding returned error: %v", err)
+	}
+	if !info.Enabled {
+		t.Fatal("expected sharding to be enabled")
+	}
+	if info.BalancerEnabled {
+		t.Fatal("expected balancer to be disabled")
+	}
+	if len(info.Shards) != 2 {
+		t.Fatalf("expected 2 shards, got %d", len(info.Shards))
+	}
+	if len(info.Collections) != 2 {
+		t.Fatalf("expected 2 sharded collections, got %d", len(info.Collections))
+	}
+
+	events, ok := findShardedCollection(info.Collections, "app.events")
+	if !ok {
+		t.Fatalf("missing app.events sharding metadata")
+	}
+	if events.ChunkCount != 10 {
+		t.Fatalf("events chunk count = %d, want 10", events.ChunkCount)
+	}
+	if events.JumboChunks != 1 {
+		t.Fatalf("events jumbo chunks = %d, want 1", events.JumboChunks)
+	}
+	if events.ChunkDistribution["shardA"] != 9 || events.ChunkDistribution["shardB"] != 1 {
+		t.Fatalf("events distribution = %+v", events.ChunkDistribution)
+	}
+}
+
+func TestReadProfiler(t *testing.T) {
+	newest := time.Date(2026, 2, 17, 12, 0, 0, 0, time.UTC)
+	older := newest.Add(-2 * time.Minute)
+
+	mc := &mockClient{
+		runCmdHook: func(dbName string, cmd any) (bson.Raw, error) {
+			command, ok := cmd.(bson.D)
+			if !ok {
+				return nil, errors.New("expected bson.D command")
+			}
+			if toString(lookupBSONValue(command, "find")) != "system.profile" {
+				return nil, errors.New("unexpected collection read")
+			}
+			if toInt64(lookupBSONValue(command, "limit")) != 10 {
+				return nil, errors.New("missing limit in profile query")
+			}
+
+			sortDoc, ok := lookupBSONValue(command, "sort").(bson.D)
+			if !ok || len(sortDoc) != 1 || sortDoc[0].Key != "ts" || toInt64(sortDoc[0].Value) != -1 {
+				return nil, errors.New("missing ts sort in profile query")
+			}
+
+			return mustMarshalRaw(t, bson.M{
+				"cursor": bson.M{
+					"id": int64(0),
+					"firstBatch": []bson.M{
+						{
+							"ns": "app.users",
+							"command": bson.M{
+								"find":       "users",
+								"filter":     bson.M{"status": "active", "profile": bson.M{"verified": true}},
+								"sort":       bson.M{"created_at": -1},
+								"projection": bson.M{"email": 1},
+							},
+							"millis":      int64(850),
+							"ts":          bson.DateTime(older.UnixMilli()),
+							"planSummary": "COLLSCAN",
+						},
+						{
+							"ns": "app.users",
+							"command": bson.M{
+								"find":   "users",
+								"filter": bson.M{"email": bson.M{"$eq": "alice@example.com"}},
+							},
+							"durationMillis": int64(120),
+							"ts":             bson.DateTime(newest.UnixMilli()),
+							"planSummary":    "IXSCAN { email: 1 }",
+						},
+					},
+				},
+			}), nil
+		},
+	}
+	insp := &Inspector{db: mc}
+
+	entries, err := insp.ReadProfiler(context.TODO(), "app", 10)
+	if err != nil {
+		t.Fatalf("ReadProfiler: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entries = %d, want 2", len(entries))
+	}
+
+	if !entries[0].Timestamp.Equal(newest) {
+		t.Fatalf("entries[0] timestamp = %v, want %v", entries[0].Timestamp, newest)
+	}
+	if entries[0].DurationMillis != 120 {
+		t.Fatalf("entries[0] duration = %d, want 120", entries[0].DurationMillis)
+	}
+	if !containsString(entries[0].FilterFields, "email") {
+		t.Fatalf("entries[0] filter fields = %v, want email", entries[0].FilterFields)
+	}
+
+	if entries[1].DurationMillis != 850 {
+		t.Fatalf("entries[1] duration = %d, want 850", entries[1].DurationMillis)
+	}
+	if !containsString(entries[1].FilterFields, "status") || !containsString(entries[1].FilterFields, "profile.verified") {
+		t.Fatalf("entries[1] filter fields = %v, want status and profile.verified", entries[1].FilterFields)
+	}
+	if !containsString(entries[1].SortFields, "created_at") {
+		t.Fatalf("entries[1] sort fields = %v, want created_at", entries[1].SortFields)
+	}
+	if !containsString(entries[1].ProjectionFields, "email") {
+		t.Fatalf("entries[1] projection fields = %v, want email", entries[1].ProjectionFields)
+	}
+}
+
+func TestReadProfiler_ProfilerDisabled(t *testing.T) {
+	mc := &mockClient{
+		runCmdHook: func(string, any) (bson.Raw, error) {
+			return nil, mongo.CommandError{Code: 26, Message: "NamespaceNotFound: app.system.profile"}
+		},
+	}
+	insp := &Inspector{db: mc}
+
+	entries, err := insp.ReadProfiler(context.TODO(), "app", 100)
+	if err != nil {
+		t.Fatalf("ReadProfiler returned error: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected empty profiler entries when disabled, got %d", len(entries))
+	}
+}
+
+func lookupBSONValue(doc bson.D, key string) any {
+	for _, elem := range doc {
+		if elem.Key == key {
+			return elem.Value
+		}
+	}
+	return nil
+}
+
+func mustMarshalRaw(t *testing.T, v any) bson.Raw {
+	t.Helper()
+	raw, err := bson.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal bson: %v", err)
+	}
+	return raw
+}
+
+func findShardedCollection(collections []ShardedCollectionInfo, namespace string) (ShardedCollectionInfo, bool) {
+	for _, coll := range collections {
+		if coll.Namespace == namespace {
+			return coll, true
+		}
+	}
+	return ShardedCollectionInfo{}, false
+}
+
+func containsString(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }

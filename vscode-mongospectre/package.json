@@ -1,0 +1,86 @@
+{
+  "name": "mongospectre",
+  "displayName": "mongospectre",
+  "description": "Inline MongoDB collection diagnostics powered by mongospectre.",
+  "version": "0.1.0",
+  "publisher": "ppiankov",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ppiankov/mongospectre.git",
+    "directory": "vscode-mongospectre"
+  },
+  "homepage": "https://github.com/ppiankov/mongospectre",
+  "bugs": {
+    "url": "https://github.com/ppiankov/mongospectre/issues"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:mongospectre.refresh",
+    "onLanguage:go",
+    "onLanguage:python",
+    "onLanguage:javascript",
+    "onLanguage:typescript"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "mongospectre.refresh",
+        "title": "mongospectre: Refresh Diagnostics"
+      }
+    ],
+    "configuration": {
+      "title": "mongospectre",
+      "properties": {
+        "mongospectre.uri": {
+          "type": "string",
+          "default": "mongodb://localhost:27017",
+          "description": "MongoDB URI passed to mongospectre check --uri."
+        },
+        "mongospectre.database": {
+          "type": "string",
+          "default": "",
+          "description": "Optional MongoDB database name passed to mongospectre check --database."
+        },
+        "mongospectre.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Re-run mongospectre diagnostics on file save (debounced)."
+        },
+        "mongospectre.binaryPath": {
+          "type": "string",
+          "default": "mongospectre",
+          "description": "Path to the mongospectre CLI binary."
+        },
+        "mongospectre.debounceMs": {
+          "type": "number",
+          "default": 800,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Debounce window in milliseconds for save-triggered refresh."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "lint": "tsc -p ./ --noEmit",
+    "package:vsix": "npm run build && npx @vscode/vsce package",
+    "publish:marketplace": "npm run build && npx @vscode/vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.57",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^2.26.0",
+    "typescript": "^5.8.2"
+  }
+}

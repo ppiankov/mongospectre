@@ -17,14 +17,36 @@ type DatabaseInfo struct {
 
 // CollectionInfo describes a MongoDB collection with stats.
 type CollectionInfo struct {
-	Name        string      `json:"name"`
-	Database    string      `json:"database"`
-	Type        string      `json:"type"` // "collection" or "view"
-	DocCount    int64       `json:"docCount"`
-	Size        int64       `json:"size"`        // uncompressed data size in bytes
-	AvgObjSize  int64       `json:"avgObjSize"`  // average document size in bytes
-	StorageSize int64       `json:"storageSize"` // allocated storage in bytes
-	Indexes     []IndexInfo `json:"indexes"`
+	Name        string         `json:"name"`
+	Database    string         `json:"database"`
+	Type        string         `json:"type"` // "collection" or "view"
+	DocCount    int64          `json:"docCount"`
+	Size        int64          `json:"size"`        // uncompressed data size in bytes
+	AvgObjSize  int64          `json:"avgObjSize"`  // average document size in bytes
+	StorageSize int64          `json:"storageSize"` // allocated storage in bytes
+	Indexes     []IndexInfo    `json:"indexes"`
+	Validator   *ValidatorInfo `json:"validator,omitempty"`
+}
+
+// ValidatorInfo describes collection-level JSON Schema validation settings.
+type ValidatorInfo struct {
+	Collection       string          `json:"collection"`
+	Database         string          `json:"database"`
+	Schema           ValidatorSchema `json:"schema"`
+	ValidationLevel  string          `json:"validationLevel,omitempty"`
+	ValidationAction string          `json:"validationAction,omitempty"`
+}
+
+// ValidatorSchema is a normalized subset of MongoDB JSON Schema we analyze.
+type ValidatorSchema struct {
+	Required             []string                  `json:"required,omitempty"`
+	AdditionalProperties *bool                     `json:"additionalProperties,omitempty"`
+	Properties           map[string]ValidatorField `json:"properties,omitempty"`
+}
+
+// ValidatorField captures expected BSON types for a single schema property.
+type ValidatorField struct {
+	BSONTypes []string `json:"bsonTypes,omitempty"`
 }
 
 // KeyField is an ordered index key element.
@@ -54,6 +76,18 @@ type ServerInfo struct {
 	Version string `json:"version"`
 }
 
+// ProfileEntry represents a normalized slow-query profiler document shape.
+type ProfileEntry struct {
+	Database         string    `json:"database"`
+	Collection       string    `json:"collection"`
+	FilterFields     []string  `json:"filterFields,omitempty"`
+	SortFields       []string  `json:"sortFields,omitempty"`
+	ProjectionFields []string  `json:"projectionFields,omitempty"`
+	DurationMillis   int64     `json:"durationMillis"`
+	Timestamp        time.Time `json:"timestamp"`
+	PlanSummary      string    `json:"planSummary,omitempty"`
+}
+
 // UserRole describes a single role assigned to a user.
 type UserRole struct {
 	Role string `json:"role" bson:"role"`
@@ -65,4 +99,24 @@ type UserInfo struct {
 	Username string     `json:"user" bson:"user"`
 	Database string     `json:"db"   bson:"db"`
 	Roles    []UserRole `json:"roles" bson:"roles"`
+}
+
+// ShardingInfo captures cluster-level sharding metadata used for audit checks.
+type ShardingInfo struct {
+	Enabled         bool                    `json:"enabled"`
+	BalancerEnabled bool                    `json:"balancerEnabled"`
+	Shards          []string                `json:"shards,omitempty"`
+	Collections     []ShardedCollectionInfo `json:"collections,omitempty"`
+}
+
+// ShardedCollectionInfo captures shard key and chunk metadata for one collection.
+type ShardedCollectionInfo struct {
+	Namespace         string           `json:"namespace"`
+	Database          string           `json:"database"`
+	Collection        string           `json:"collection"`
+	Key               []KeyField       `json:"key"`
+	ChunkCount        int64            `json:"chunkCount"`
+	ChunkDistribution map[string]int64 `json:"chunkDistribution,omitempty"`
+	JumboChunks       int64            `json:"jumboChunks"`
+	ChunkLimitHit     bool             `json:"chunkLimitHit,omitempty"`
 }

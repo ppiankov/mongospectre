@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ppiankov/mongospectre/internal/analyzer"
 	mongoinspect "github.com/ppiankov/mongospectre/internal/mongo"
 	"github.com/ppiankov/mongospectre/internal/reporter"
-	"github.com/ppiankov/mongospectre/internal/scanner"
 	"github.com/spf13/cobra"
 )
 
@@ -18,14 +18,27 @@ func newCheckCmd() *cobra.Command {
 		database      string
 		format        string
 		failOnMissing bool
+		profile       bool
+		profileLimit  int
 		noIgnore      bool
 		baseline      string
+		interactive   bool
+		noInteractive bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "check",
 		Short: "Compare code repo collection references against live MongoDB",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateFormat(format, "text", "json", "sarif", "spectrehub"); err != nil {
+				return err
+			}
+			if profileLimit <= 0 {
+				return fmt.Errorf("--profile-limit must be greater than 0")
+			}
+			if interactive && noInteractive {
+				return fmt.Errorf("--interactive and --no-interactive are mutually exclusive")
+			}
 			if uri == "" {
 				return fmt.Errorf("--uri is required (or set MONGODB_URI)")
 			}
@@ -38,7 +51,7 @@ func newCheckCmd() *cobra.Command {
 
 			// Scan code repo
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Scanning repo %s...\n", repo)
-			scan, err := scanner.Scan(repo)
+			scan, err := scanRepo(repo)
 			if err != nil {
 				return fmt.Errorf("scan repo: %w", err)
 			}
@@ -59,7 +72,7 @@ func newCheckCmd() *cobra.Command {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Connecting to %s (timeout %s)...\n", uri, timeout)
 			}
 
-			inspector, err := mongoinspect.NewInspector(ctx, mongoinspect.Config{
+			inspector, err := newInspector(ctx, mongoinspect.Config{
 				URI:      uri,
 				Database: database,
 			})
@@ -84,8 +97,26 @@ func newCheckCmd() *cobra.Command {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Hint: no collections found. Check that the URI points to a database with data, or use --database to specify one.\n")
 			}
 
+			validators, err := inspector.GetValidators(ctx, database)
+			if err != nil {
+				return fmt.Errorf("validators: %w", err)
+			}
+			collections = mergeCollectionValidators(collections, validators)
+
 			// Run diff
 			findings := analyzer.Diff(&scan, collections)
+			if profile {
+				entries, profileErr := inspector.ReadProfiler(ctx, database, int64(profileLimit))
+				if profileErr != nil {
+					return fmt.Errorf("read profiler: %w", profileErr)
+				}
+				if len(entries) == 0 {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+						"Hint: no profiler entries found in system.profile. Profiler may be disabled; enable with db.setProfilingLevel(1) and rerun with --profile.\n")
+				} else {
+					findings = append(findings, analyzer.CorrelateProfiler(&scan, entries)...)
+				}
+			}
 
 			// Apply ignore file.
 			if !noIgnore {
@@ -120,9 +151,23 @@ func newCheckCmd() *cobra.Command {
 				RepoPath:       repo,
 				URIHash:        reporter.HashURI(uri),
 			}
+			scanCopy := scan
+			report.Scan = &scanCopy
+			report.Collections = collections
 
-			if err := reporter.Write(cmd.OutOrStdout(), &report, reporter.Format(format)); err != nil {
-				return fmt.Errorf("write report: %w", err)
+			renderedInteractive, err := maybeRenderInteractive(cmd, &report, collections, &scan, interactiveConfig{
+				force:    interactive,
+				disable:  noInteractive,
+				format:   format,
+				findings: len(findings),
+			})
+			if err != nil {
+				return err
+			}
+			if !renderedInteractive {
+				if err := reporter.Write(cmd.OutOrStdout(), &report, reporter.Format(format)); err != nil {
+					return fmt.Errorf("write report: %w", err)
+				}
 			}
 
 			if failOnMissing {
@@ -148,8 +193,29 @@ func newCheckCmd() *cobra.Command {
 	cmd.Flags().StringVar(&database, "database", "", "specific database to check (default: all non-system)")
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "output format: text, json, sarif, or spectrehub")
 	cmd.Flags().BoolVar(&failOnMissing, "fail-on-missing", false, "exit 2 if any MISSING_COLLECTION found")
+	cmd.Flags().BoolVar(&profile, "profile", false, "read system.profile and correlate slow queries to source locations")
+	cmd.Flags().IntVar(&profileLimit, "profile-limit", 1000, "maximum number of profiler entries to read")
 	cmd.Flags().BoolVar(&noIgnore, "no-ignore", false, "bypass .mongospectreignore file")
 	cmd.Flags().StringVar(&baseline, "baseline", "", "path to previous JSON report for diff comparison")
+	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "launch interactive terminal UI (text format only)")
+	cmd.Flags().BoolVar(&noInteractive, "no-interactive", false, "force non-interactive output")
 
 	return cmd
+}
+
+func mergeCollectionValidators(collections []mongoinspect.CollectionInfo, validators []mongoinspect.ValidatorInfo) []mongoinspect.CollectionInfo {
+	validatorByCollection := make(map[string]mongoinspect.ValidatorInfo, len(validators))
+	for _, v := range validators {
+		key := strings.ToLower(v.Database + "." + v.Collection)
+		validatorByCollection[key] = v
+	}
+
+	for i := range collections {
+		key := strings.ToLower(collections[i].Database + "." + collections[i].Name)
+		if v, ok := validatorByCollection[key]; ok {
+			vCopy := v
+			collections[i].Validator = &vCopy
+		}
+	}
+	return collections
 }
