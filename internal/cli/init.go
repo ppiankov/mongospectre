@@ -25,7 +25,7 @@ func newInitCmd() *cobra.Command {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "skip: %s already exists\n", f.name)
 					continue
 				}
-				if err := os.WriteFile(path, []byte(f.content), 0o644); err != nil {
+				if err := os.WriteFile(path, []byte(f.content), 0o600); err != nil {
 					return fmt.Errorf("write %s: %w", f.name, err)
 				}
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "created %s\n", f.name)

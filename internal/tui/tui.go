@@ -870,7 +870,7 @@ func (m *model) exportFiltered() (string, error) {
 		return "", fmt.Errorf("marshal export: %w", err)
 	}
 	payload = append(payload, '\n')
-	if err := os.WriteFile(path, payload, 0o644); err != nil {
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
 		return "", fmt.Errorf("write export: %w", err)
 	}
 
