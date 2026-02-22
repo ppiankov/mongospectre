@@ -4,14 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-02-22
+
 ### Added
 
 - VS Code extension in `vscode-mongospectre/` with inline diagnostics, hover metadata, quick-fix ignore actions, status bar summary, and debounced refresh
-- Extension packaging workflow (`.github/workflows/vscode-extension.yml`) for VSIX artifacts and Marketplace publish on release
+- Atlas integration for index suggestions correlated with code references
+- TUI mode for interactive `watch` sessions
+- Notification system (Slack, webhook, email) for `watch --notify`
+- Code scanner for aggregation pipeline field extraction
+- Safety model section in README
+- Project status section in README
 
 ### Changed
 
 - `check --format json` now includes scanner payload (`scan`) and inspected collection metadata (`collections`) for IDE integrations
+
+### Security
+
+- SHA-pin all GitHub Actions in CI and release workflows
+- Scope release workflow permissions to job level
+- Add `go mod verify` to release workflow for supply chain integrity
+- Add `-trimpath` to GoReleaser builds to strip local paths from binaries
+- Fix config and export file permissions (0644 → 0600)
+- Disable gocritic hugeParam to avoid unnecessary pointer indirection
 
 ## [0.2.0] - 2026-02-15
 

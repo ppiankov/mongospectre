@@ -26,6 +26,49 @@ Part of the **Spectre** family — code-vs-reality drift detection tools.
 - Not a backup or replication tool
 - Does not modify any data — all queries are strictly read-only
 
+## Project Status
+
+**Status: Alpha** · **v0.2.1** · Pre-1.0
+
+| Milestone | Status |
+|-----------|--------|
+| Core functionality | Complete |
+| Test coverage >85% | Partial |
+| Security audit | Complete |
+| golangci-lint config | Complete |
+| CI pipeline (test/lint/scan) | Complete |
+| Homebrew distribution | Complete |
+| Safety model documented | Complete |
+| API stability guarantees | Not yet |
+| v1.0 release | Planned |
+
+Pre-1.0: CLI flags and JSON output schemas may change between minor versions.
+
+## Safety Model
+
+mongospectre is designed to be safe to run against any MongoDB instance, including production.
+
+### Zero Footprint
+
+| Property | Guarantee |
+|----------|-----------|
+| Database writes | None. mongospectre never writes to MongoDB. |
+| CRDs / operators | None. No custom resources, no controllers, no agents. |
+| Persistent state | None. All state is in-memory; exits clean. |
+| Network listeners | None. No ports opened, no servers started. |
+| Disk writes | Only when explicitly requested (config init, export, baseline). |
+
+### Read-Only by Design
+
+mongospectre issues read-only queries to MongoDB (`listDatabases`, `listCollections`, `collStats`, `$indexStats`, `find` on `system.profile`). It cannot modify data, indexes, or any cluster state. There is no write path in the codebase.
+
+### Credential Safety
+
+- MongoDB URIs with embedded credentials are never logged or displayed in reports
+- Config files are written with restrictive permissions (0600)
+- Notification secrets must come from environment variables (`${VAR}` placeholders)
+- No credentials are stored or cached
+
 ## Quick Start
 
 ```bash
@@ -164,7 +207,7 @@ Multi-arch images (amd64/arm64) are published to `ghcr.io/ppiankov/mongospectre`
 ### GitHub Action
 
 ```yaml
-- uses: ppiankov/mongospectre@v0.2.0
+- uses: ppiankov/mongospectre@v0.2.1
   with:
     command: audit
     uri: ${{ secrets.MONGODB_URI }}
