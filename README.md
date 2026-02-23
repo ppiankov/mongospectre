@@ -1,7 +1,7 @@
 # mongospectre
-
 [![CI](https://github.com/ppiankov/mongospectre/actions/workflows/ci.yml/badge.svg)](https://github.com/ppiankov/mongospectre/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![ANCC](https://img.shields.io/badge/ANCC-compliant-brightgreen)](https://ancc.dev)
 
 MongoDB collection and index auditor. Scans codebases for collection/field references, compares with live MongoDB schema and statistics, detects drift.
 
