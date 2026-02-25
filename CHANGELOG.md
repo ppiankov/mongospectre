@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-02-25
+
+### Fixed
+
+- `--audit-users` now shows a prominent warning when all user queries fail due to insufficient permissions, instead of silently producing no results
+- Per-database user query errors moved to `--verbose` to reduce noise
+
+### Added
+
+- Troubleshooting section for user audit permission requirements
+
 ## [0.2.3] - 2026-02-25
 
 ### Added

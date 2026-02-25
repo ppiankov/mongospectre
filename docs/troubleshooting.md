@@ -103,6 +103,23 @@ Optional features require additional roles:
 | Sharding analysis | `--sharding` | `read` on `config` database |
 | Atlas suggestions | `--atlas-*` | Atlas API key (separate from DB user) |
 
+## User Audit Produces No Results
+
+```
+WARNING: --audit-users produced no results (N databases denied access).
+```
+
+The `--audit-users` flag requires the `userAdmin` or `userAdminAnyDatabase` role because it calls `db.getUsers()` on each database. A read-only user cannot list other users.
+
+**Fix:** connect with a user that has one of these roles:
+
+- `userAdmin` on specific databases you want to audit
+- `userAdminAnyDatabase` on the `admin` database (for cluster-wide user audit)
+
+In Atlas, go to Database Access and either create a dedicated audit user or temporarily grant `userAdmin` to your existing user. The audit is read-only — it never modifies users, passwords, or roles.
+
+Use `--verbose` to see per-database error details.
+
 ## Panic or Unexpected Crash
 
 If mongospectre panics, please report it at [github.com/ppiankov/mongospectre/issues](https://github.com/ppiankov/mongospectre/issues) with:

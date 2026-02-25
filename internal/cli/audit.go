@@ -89,11 +89,15 @@ func newAuditCmd() *cobra.Command {
 
 			if auditUsers {
 				var allUsers []mongoinspect.UserInfo
+				var userErrors int
 
 				// Query admin database for cluster-level users.
 				adminUsers, adminErr := inspector.InspectUsers(ctx, "admin")
 				if adminErr != nil {
-					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not list admin users: %v\n", adminErr)
+					if verbose {
+						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not list admin users: %v\n", adminErr)
+					}
+					userErrors++
 				} else {
 					allUsers = append(allUsers, adminUsers...)
 				}
@@ -104,14 +108,23 @@ func newAuditCmd() *cobra.Command {
 					for _, db := range dbs {
 						dbUsers, dbErr := inspector.InspectUsers(ctx, db.Name)
 						if dbErr != nil {
-							_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not list users on %s: %v\n", db.Name, dbErr)
+							if verbose {
+								_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not list users on %s: %v\n", db.Name, dbErr)
+							}
+							userErrors++
 							continue
 						}
 						allUsers = append(allUsers, dbUsers...)
 					}
 				}
 
-				if verbose {
+				if len(allUsers) == 0 && userErrors > 0 {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+						"WARNING: --audit-users produced no results (%d databases denied access).\n"+
+							"  This feature requires userAdmin or userAdminAnyDatabase role.\n"+
+							"  Your current user likely has read-only access.\n"+
+							"  See: docs/troubleshooting.md\n", userErrors)
+				} else {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Inspected %d users\n", len(allUsers))
 				}
 
