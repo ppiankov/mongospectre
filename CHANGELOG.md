@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-02-25
+
+### Fixed
+
+- Panic on text, 2dsphere, 2d, and hashed index key types in Atlas clusters
+- Ambiguous connection error messages now include actionable troubleshooting hints
+- Double-wrapped "connect: connect:" error prefix in CLI output
+- Go version mismatch in go.mod causing CI test failures
+- Module tidy drift (charmbracelet deps promoted from indirect to direct)
+- VS Code extension TypeScript error on Diagnostic.data property
+
+### Added
+
+- Connection error classification with hints for timeout, auth, DNS, and refused errors
+- Troubleshooting guide (`docs/troubleshooting.md`)
+
 ## [0.2.1] - 2026-02-22
 
 ### Added
