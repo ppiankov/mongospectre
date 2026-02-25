@@ -24,6 +24,7 @@ type Metadata struct {
 	Version        string `json:"version"`
 	Command        string `json:"command"`
 	Timestamp      string `json:"timestamp"`
+	Host           string `json:"host,omitempty"`
 	Database       string `json:"database,omitempty"`
 	MongoDBVersion string `json:"mongodbVersion,omitempty"`
 	RepoPath       string `json:"repoPath,omitempty"`
@@ -124,6 +125,9 @@ func writeText(w io.Writer, report *Report) error {
 		header += " | " + report.Metadata.Command
 		if report.Metadata.MongoDBVersion != "" {
 			header += " | MongoDB " + report.Metadata.MongoDBVersion
+		}
+		if report.Metadata.Host != "" {
+			header += " | " + report.Metadata.Host
 		}
 		if report.Metadata.Database != "" {
 			header += " | db=" + report.Metadata.Database

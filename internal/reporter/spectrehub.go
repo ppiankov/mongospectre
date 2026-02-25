@@ -48,6 +48,16 @@ type SpectreHubSummary struct {
 	Info   int `json:"info"`
 }
 
+// HostFromURI extracts the hostname from a MongoDB URI, stripping credentials.
+// Returns the host portion only (e.g., "stress.5v2bl.mongodb.net" from an SRV URI).
+func HostFromURI(rawURI string) string {
+	u, err := url.Parse(rawURI)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
 // HashURI produces a sha256 hash of the URI with credentials stripped.
 func HashURI(rawURI string) string {
 	// Strip credentials before hashing.

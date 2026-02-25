@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-02-25
+
+### Added
+
+- Cluster host displayed in connection banner and text report header
+- `host` field in report metadata (JSON, SpectreHub formats)
+- `HostFromURI` helper for safe hostname extraction from MongoDB URIs
+
 ## [0.2.2] - 2026-02-25
 
 ### Fixed

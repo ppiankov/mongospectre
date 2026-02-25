@@ -85,7 +85,12 @@ func newCheckCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("server info: %w", err)
 			}
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Connected to MongoDB %s\n", info.Version)
+			host := reporter.HostFromURI(uri)
+			if host != "" {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Connected to MongoDB %s at %s\n", info.Version, host)
+			} else {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Connected to MongoDB %s\n", info.Version)
+			}
 
 			collections, err := inspector.Inspect(ctx, database)
 			if err != nil {
@@ -146,6 +151,7 @@ func newCheckCmd() *cobra.Command {
 			report.Metadata = reporter.Metadata{
 				Version:        version,
 				Command:        "check",
+				Host:           host,
 				Database:       database,
 				MongoDBVersion: info.Version,
 				RepoPath:       repo,
