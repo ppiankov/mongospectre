@@ -367,3 +367,123 @@ func TestAuditAtlas_MissingOneKeySkipsWithWarning(t *testing.T) {
 		t.Fatalf("expected atlas skip warning, got: %q", stderr)
 	}
 }
+
+func TestAtlasUsersToUserInfo(t *testing.T) {
+	atlasUsers := []atlas.DatabaseUser{
+		{
+			Username:     "admin",
+			DatabaseName: "admin",
+			Roles: []atlas.DatabaseUserRole{
+				{RoleName: "readWriteAnyDatabase", DatabaseName: "admin"},
+				{RoleName: "dbAdminAnyDatabase", DatabaseName: "admin"},
+			},
+			Scopes: []atlas.DatabaseUserScope{
+				{Name: "Cluster0", Type: "CLUSTER"},
+			},
+		},
+		{
+			Username:     "appuser",
+			DatabaseName: "admin",
+			Roles: []atlas.DatabaseUserRole{
+				{RoleName: "readWrite", DatabaseName: "myapp"},
+			},
+		},
+	}
+
+	result := atlasUsersToUserInfo(atlasUsers)
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 users, got %d", len(result))
+	}
+	if result[0].Username != "admin" {
+		t.Errorf("expected username 'admin', got %q", result[0].Username)
+	}
+	if result[0].Database != "admin" {
+		t.Errorf("expected database 'admin', got %q", result[0].Database)
+	}
+	if len(result[0].Roles) != 2 {
+		t.Fatalf("expected 2 roles, got %d", len(result[0].Roles))
+	}
+	if result[0].Roles[0].Role != "readWriteAnyDatabase" {
+		t.Errorf("expected role 'readWriteAnyDatabase', got %q", result[0].Roles[0].Role)
+	}
+	if result[0].Roles[0].DB != "admin" {
+		t.Errorf("expected db 'admin', got %q", result[0].Roles[0].DB)
+	}
+	if result[1].Username != "appuser" {
+		t.Errorf("expected username 'appuser', got %q", result[1].Username)
+	}
+	if len(result[1].Roles) != 1 {
+		t.Fatalf("expected 1 role, got %d", len(result[1].Roles))
+	}
+}
+
+func TestAuditUsers_AtlasFallback(t *testing.T) {
+	// Native usersInfo fails, but Atlas API succeeds.
+	fake := &fakeInspector{
+		serverInfo: mongoinspect.ServerInfo{Version: "7.0.0"},
+		inspectResult: []mongoinspect.CollectionInfo{
+			{Database: "app", Name: "users", DocCount: 10, Indexes: []mongoinspect.IndexInfo{{Name: "_id_"}}},
+		},
+		inspectUsersErr: map[string]error{
+			"admin": errors.New("command usersInfo not permitted"),
+			"app":   errors.New("command usersInfo not permitted"),
+		},
+		listDatabasesRes: []mongoinspect.DatabaseInfo{
+			{Name: "app"},
+		},
+	}
+	stubNewInspector(t, func(context.Context, mongoinspect.Config) (inspector, error) {
+		return fake, nil
+	})
+
+	fakeAtlas := &fakeAtlasClient{
+		resolveProjectIDRes: "proj123",
+		databaseUsersRes: []atlas.DatabaseUser{
+			{
+				Username:     "atlasAdmin",
+				DatabaseName: "admin",
+				Roles: []atlas.DatabaseUserRole{
+					{RoleName: "root", DatabaseName: "admin"},
+				},
+			},
+			{
+				Username:     "atlasApp",
+				DatabaseName: "admin",
+				Roles: []atlas.DatabaseUserRole{
+					{RoleName: "readWrite", DatabaseName: "app"},
+				},
+			},
+		},
+	}
+	stubNewAtlasClient(t, func(atlas.Config) (atlasClient, error) {
+		return fakeAtlas, nil
+	})
+
+	stdout, stderr, err := execCLI(t,
+		"audit",
+		"--uri", "mongodb://stub",
+		"--audit-users",
+		"--atlas-public-key", "pub",
+		"--atlas-private-key", "priv",
+		"--atlas-project", "proj123",
+		"--atlas-cluster", "Cluster0",
+		"--format", "json",
+		"--timeout", "1s",
+	)
+	requireExitCode(t, err, 1)
+
+	if !strings.Contains(stderr, "Fetched 2 users via Atlas API") {
+		t.Errorf("expected Atlas API success message, got stderr: %q", stderr)
+	}
+
+	var report reporter.Report
+	if jsonErr := json.Unmarshal([]byte(stdout), &report); jsonErr != nil {
+		t.Fatalf("invalid report JSON: %v", jsonErr)
+	}
+
+	// Should have OVERPRIVILEGED_USER for root user.
+	assertHasType(t, report.Findings, analyzer.FindingOverprivilegedUser)
+	// Should have ATLAS_USER_NO_SCOPE for both users (no scopes).
+	assertHasType(t, report.Findings, analyzer.FindingAtlasUserNoScope)
+}

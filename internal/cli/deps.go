@@ -29,6 +29,7 @@ type atlasClient interface {
 	ListSuggestedIndexes(ctx context.Context, projectID, clusterName string) ([]atlas.SuggestedIndex, error)
 	ListClusters(ctx context.Context, projectID string) ([]atlas.Cluster, error)
 	ResolveProjectIDByCluster(ctx context.Context, clusterName string) (string, error)
+	ListDatabaseUsers(ctx context.Context, projectID string) ([]atlas.DatabaseUser, error)
 }
 
 var (

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ppiankov/mongospectre/internal/analyzer"
+	"github.com/ppiankov/mongospectre/internal/atlas"
 	mongoinspect "github.com/ppiankov/mongospectre/internal/mongo"
 	"github.com/ppiankov/mongospectre/internal/reporter"
 	"github.com/spf13/cobra"
@@ -118,18 +119,38 @@ func newAuditCmd() *cobra.Command {
 					}
 				}
 
+				// Atlas API fallback: when native usersInfo fails, try Atlas Admin API.
+				var atlasUsers []atlas.DatabaseUser
+				if len(allUsers) == 0 && userErrors > 0 {
+					atlasUsers = collectAtlasUsers(ctx, cmd, atlasOptions{
+						PublicKey:  atlasPublicKey,
+						PrivateKey: atlasPrivateKey,
+						ProjectID:  atlasProject,
+						Cluster:    atlasCluster,
+					}, uri)
+					if len(atlasUsers) > 0 {
+						allUsers = append(allUsers, atlasUsersToUserInfo(atlasUsers)...)
+						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Fetched %d users via Atlas API\n", len(atlasUsers))
+					}
+				}
+
 				if len(allUsers) == 0 && userErrors > 0 {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 						"WARNING: --audit-users produced no results (%d databases denied access).\n"+
-							"  This feature requires userAdmin or userAdminAnyDatabase role.\n"+
-							"  Your current user likely has read-only access.\n"+
+							"  Native MongoDB usersInfo requires userAdmin or userAdminAnyDatabase role.\n"+
+							"  On Atlas, use --atlas-public-key and --atlas-private-key to audit users via Atlas API.\n"+
 							"  See: docs/troubleshooting.md\n", userErrors)
-				} else {
+				} else if len(atlasUsers) == 0 {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Inspected %d users\n", len(allUsers))
 				}
 
 				userFindings := analyzer.AuditUsers(allUsers)
 				findings = append(findings, userFindings...)
+
+				// Atlas-specific user findings (scope analysis).
+				if len(atlasUsers) > 0 {
+					findings = append(findings, analyzer.AuditAtlasUsers(atlasUsers)...)
+				}
 			}
 
 			if sharding {

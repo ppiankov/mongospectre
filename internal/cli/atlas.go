@@ -207,6 +207,71 @@ func deriveAtlasClusterName(mongoURI string) string {
 	return label
 }
 
+// collectAtlasUsers fetches database users via the Atlas Admin API.
+// Returns nil if Atlas credentials are not available or the API call fails.
+func collectAtlasUsers(
+	ctx context.Context,
+	cmd *cobra.Command,
+	opts atlasOptions,
+	mongoURI string,
+) []atlas.DatabaseUser {
+	resolved := resolveAtlasOptions(opts)
+
+	if resolved.PublicKey == "" || resolved.PrivateKey == "" {
+		if verbose {
+			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Atlas user audit skipped: no Atlas API credentials provided.")
+		}
+		return nil
+	}
+
+	if resolved.Cluster == "" {
+		resolved.Cluster = deriveAtlasClusterName(mongoURI)
+	}
+
+	atlasClient, err := newAtlasClient(atlas.Config{
+		PublicKey:  resolved.PublicKey,
+		PrivateKey: resolved.PrivateKey,
+	})
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: atlas user audit skipped: %v\n", err)
+		return nil
+	}
+
+	projectID := resolved.ProjectID
+	clusterName := resolved.Cluster
+	projectID, _ = resolveAtlasTarget(ctx, cmd, atlasClient, projectID, clusterName)
+	if projectID == "" {
+		return nil
+	}
+
+	users, err := atlasClient.ListDatabaseUsers(ctx, projectID)
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: atlas user audit failed: %v\n", err)
+		return nil
+	}
+	return users
+}
+
+// atlasUsersToUserInfo converts Atlas API database users to the internal
+// UserInfo type so they flow through the standard AuditUsers analyzer.
+func atlasUsersToUserInfo(users []atlas.DatabaseUser) []mongoinspect.UserInfo {
+	result := make([]mongoinspect.UserInfo, 0, len(users))
+	for _, u := range users {
+		info := mongoinspect.UserInfo{
+			Username: u.Username,
+			Database: u.DatabaseName,
+		}
+		for _, r := range u.Roles {
+			info.Roles = append(info.Roles, mongoinspect.UserRole{
+				Role: r.RoleName,
+				DB:   r.DatabaseName,
+			})
+		}
+		result = append(result, info)
+	}
+	return result
+}
+
 func scanRepoForAtlas(cmd *cobra.Command) (scanner.ScanResult, bool) {
 	cwd, err := os.Getwd()
 	if err != nil {

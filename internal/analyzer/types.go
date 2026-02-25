@@ -50,6 +50,7 @@ const (
 	FindingAtlasAlertActive     FindingType = "ATLAS_ALERT_ACTIVE"
 	FindingAtlasTierMismatch    FindingType = "ATLAS_TIER_MISMATCH"
 	FindingAtlasVersionBehind   FindingType = "ATLAS_VERSION_BEHIND"
+	FindingAtlasUserNoScope     FindingType = "ATLAS_USER_NO_SCOPE"
 	FindingOK                   FindingType = "OK"
 )
 

@@ -59,3 +59,25 @@ func IsStatus(err error, status int) bool {
 	apiErr, ok := err.(*APIError)
 	return ok && apiErr.StatusCode == status
 }
+
+// DatabaseUser represents an Atlas database user from the Admin API.
+type DatabaseUser struct {
+	Username        string              `json:"username"`
+	DatabaseName    string              `json:"databaseName"`
+	Roles           []DatabaseUserRole  `json:"roles"`
+	Scopes          []DatabaseUserScope `json:"scopes"`
+	GroupID         string              `json:"groupId"`
+	DeleteAfterDate string              `json:"deleteAfterDate,omitempty"`
+}
+
+// DatabaseUserRole is a single role assignment for an Atlas database user.
+type DatabaseUserRole struct {
+	RoleName     string `json:"roleName"`
+	DatabaseName string `json:"databaseName"`
+}
+
+// DatabaseUserScope restricts an Atlas database user to specific clusters or data lakes.
+type DatabaseUserScope struct {
+	Name string `json:"name"`
+	Type string `json:"type"` // "CLUSTER" or "DATA_LAKE"
+}

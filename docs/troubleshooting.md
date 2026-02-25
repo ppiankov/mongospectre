@@ -109,14 +109,41 @@ Optional features require additional roles:
 WARNING: --audit-users produced no results (N databases denied access).
 ```
 
-The `--audit-users` flag requires the `userAdmin` or `userAdminAnyDatabase` role because it calls `db.getUsers()` on each database. A read-only user cannot list other users.
+The `--audit-users` flag calls MongoDB's native `db.getUsers()` command, which requires the `userAdmin` or `userAdminAnyDatabase` role. A read-only or readWrite user cannot list other users.
 
-**Fix:** connect with a user that has one of these roles:
+### Self-hosted MongoDB
+
+Connect with a user that has one of these roles:
 
 - `userAdmin` on specific databases you want to audit
 - `userAdminAnyDatabase` on the `admin` database (for cluster-wide user audit)
 
-In Atlas, go to Database Access and either create a dedicated audit user or temporarily grant `userAdmin` to your existing user. The audit is read-only — it never modifies users, passwords, or roles.
+### MongoDB Atlas
+
+Atlas does **not** expose the `userAdminAnyDatabase` role to database users. Atlas manages users through its own control plane, so the native `db.getUsers()` command will always fail.
+
+**Fix:** Use Atlas API credentials to audit users via the Atlas Admin API:
+
+```bash
+mongospectre audit --uri "..." --audit-users \
+  --atlas-public-key "$ATLAS_PUBLIC_KEY" \
+  --atlas-private-key "$ATLAS_PRIVATE_KEY"
+```
+
+When `--audit-users` fails via native commands and Atlas API credentials are provided, mongospectre automatically falls back to the Atlas Admin API (`GET /api/atlas/v2/groups/{groupId}/databaseUsers`) to fetch user data.
+
+To create Atlas API credentials:
+1. Go to Atlas > Organization Access Manager > API Keys
+2. Create an API key with "Project Read Only" role (minimum required)
+3. Add your IP to the API key's access list
+
+Environment variables also work:
+```bash
+export ATLAS_PUBLIC_KEY="your-public-key"
+export ATLAS_PRIVATE_KEY="your-private-key"
+```
+
+The audit is read-only — it never modifies users, passwords, or roles.
 
 Use `--verbose` to see per-database error details.
 

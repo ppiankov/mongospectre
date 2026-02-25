@@ -241,6 +241,57 @@ func (c *Client) ListMongoDBVersions(ctx context.Context, projectID string) ([]s
 	return versions, nil
 }
 
+// ListDatabaseUsers returns all database users in an Atlas project.
+func (c *Client) ListDatabaseUsers(ctx context.Context, projectID string) ([]DatabaseUser, error) {
+	if strings.TrimSpace(projectID) == "" {
+		return nil, fmt.Errorf("atlas project id is required")
+	}
+
+	path := fmt.Sprintf("/api/atlas/v2/groups/%s/databaseUsers", url.PathEscape(projectID))
+	var envelope listEnvelope[map[string]any]
+	if err := c.get(ctx, path, url.Values{
+		"itemsPerPage": []string{"500"},
+		"includeCount": []string{"false"},
+	}, &envelope); err != nil {
+		return nil, err
+	}
+
+	users := make([]DatabaseUser, 0, len(envelope.Results))
+	for _, raw := range envelope.Results {
+		user := DatabaseUser{
+			Username:        firstString(raw, "username"),
+			DatabaseName:    firstString(raw, "databaseName"),
+			GroupID:         firstString(raw, "groupId"),
+			DeleteAfterDate: firstString(raw, "deleteAfterDate"),
+		}
+		if user.Username == "" {
+			continue
+		}
+		for _, r := range toSlice(raw["roles"]) {
+			rm := toMap(r)
+			if rm == nil {
+				continue
+			}
+			user.Roles = append(user.Roles, DatabaseUserRole{
+				RoleName:     firstString(rm, "roleName"),
+				DatabaseName: firstString(rm, "databaseName"),
+			})
+		}
+		for _, s := range toSlice(raw["scopes"]) {
+			sm := toMap(s)
+			if sm == nil {
+				continue
+			}
+			user.Scopes = append(user.Scopes, DatabaseUserScope{
+				Name: firstString(sm, "name"),
+				Type: firstString(sm, "type"),
+			})
+		}
+		users = append(users, user)
+	}
+	return users, nil
+}
+
 // ResolveProjectIDByCluster discovers a project containing the given cluster.
 func (c *Client) ResolveProjectIDByCluster(ctx context.Context, clusterName string) (string, error) {
 	clusterName = strings.TrimSpace(clusterName)
