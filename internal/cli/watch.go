@@ -249,7 +249,7 @@ func (w *watcher) runAudit(ctx context.Context) ([]analyzer.Finding, error) {
 		Database: w.database,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("connect: %w", err)
+		return nil, err
 	}
 	defer func() { _ = inspector.Close(auditCtx) }()
 

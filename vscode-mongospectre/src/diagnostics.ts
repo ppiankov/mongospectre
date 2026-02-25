@@ -69,7 +69,9 @@ export async function buildDiagnostics(
       const diag = new vscode.Diagnostic(range, finding.message, severityToDiagnostic(finding.severity));
       diag.source = "mongospectre";
       diag.code = finding.type;
-      diag.data = {
+      // Diagnostic.data is available since VS Code 1.73 but some @types/vscode
+      // versions omit it from the type definition. Cast to attach metadata.
+      (diag as vscode.Diagnostic & { data?: unknown }).data = {
         type: finding.type,
         database: finding.database,
         collection: finding.collection,

@@ -3,6 +3,8 @@ package mongo
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -146,6 +148,113 @@ func TestBsonRawToKeyFields_Invalid(t *testing.T) {
 	fields := bsonRawToKeyFields(bson.Raw{0xFF})
 	if fields != nil {
 		t.Errorf("expected nil for invalid raw, got %v", fields)
+	}
+}
+
+func TestBsonRawToKeyFields_TextIndex(t *testing.T) {
+	raw, err := bson.Marshal(bson.D{{Key: "content", Value: "text"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := bsonRawToKeyFields(raw)
+	if len(fields) != 1 {
+		t.Fatalf("expected 1 field, got %d", len(fields))
+	}
+	if fields[0].Field != "content" || fields[0].Direction != 0 {
+		t.Errorf("fields[0] = %+v, want {content, 0}", fields[0])
+	}
+}
+
+func TestBsonRawToKeyFields_2dsphereIndex(t *testing.T) {
+	raw, err := bson.Marshal(bson.D{{Key: "location", Value: "2dsphere"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := bsonRawToKeyFields(raw)
+	if len(fields) != 1 {
+		t.Fatalf("expected 1 field, got %d", len(fields))
+	}
+	if fields[0].Field != "location" || fields[0].Direction != 0 {
+		t.Errorf("fields[0] = %+v, want {location, 0}", fields[0])
+	}
+}
+
+func TestBsonRawToKeyFields_MixedTypes(t *testing.T) {
+	raw, err := bson.Marshal(bson.D{
+		{Key: "status", Value: 1},
+		{Key: "content", Value: "text"},
+		{Key: "location", Value: "2dsphere"},
+		{Key: "created_at", Value: -1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := bsonRawToKeyFields(raw)
+	if len(fields) != 4 {
+		t.Fatalf("expected 4 fields, got %d", len(fields))
+	}
+	want := []KeyField{
+		{Field: "status", Direction: 1},
+		{Field: "content", Direction: 0},
+		{Field: "location", Direction: 0},
+		{Field: "created_at", Direction: -1},
+	}
+	for i, w := range want {
+		if fields[i] != w {
+			t.Errorf("fields[%d] = %+v, want %+v", i, fields[i], w)
+		}
+	}
+}
+
+func TestClassifyConnectError_Timeout(t *testing.T) {
+	err := fmt.Errorf("server selection error: context deadline exceeded, current topology: { Type: ReplicaSetNoPrimary }")
+	classified := classifyConnectError(err)
+	if !strings.Contains(classified.Error(), "hint:") {
+		t.Errorf("expected hint in error, got: %v", classified)
+	}
+	if !strings.Contains(classified.Error(), "Atlas Network Access") {
+		t.Errorf("expected Atlas hint, got: %v", classified)
+	}
+}
+
+func TestClassifyConnectError_Auth(t *testing.T) {
+	err := fmt.Errorf("authentication failed")
+	classified := classifyConnectError(err)
+	if !strings.Contains(classified.Error(), "hint:") {
+		t.Errorf("expected hint in error, got: %v", classified)
+	}
+	if !strings.Contains(classified.Error(), "authSource") {
+		t.Errorf("expected authSource hint, got: %v", classified)
+	}
+}
+
+func TestClassifyConnectError_Refused(t *testing.T) {
+	err := fmt.Errorf("connection refused")
+	classified := classifyConnectError(err)
+	if !strings.Contains(classified.Error(), "hint:") {
+		t.Errorf("expected hint in error, got: %v", classified)
+	}
+	if !strings.Contains(classified.Error(), "Is MongoDB running") {
+		t.Errorf("expected running hint, got: %v", classified)
+	}
+}
+
+func TestClassifyConnectError_DNS(t *testing.T) {
+	err := fmt.Errorf("no such host")
+	classified := classifyConnectError(err)
+	if !strings.Contains(classified.Error(), "hint:") {
+		t.Errorf("expected hint in error, got: %v", classified)
+	}
+	if !strings.Contains(classified.Error(), "DNS") {
+		t.Errorf("expected DNS hint, got: %v", classified)
+	}
+}
+
+func TestClassifyConnectError_Unknown(t *testing.T) {
+	err := fmt.Errorf("some other error")
+	classified := classifyConnectError(err)
+	if classified.Error() != err.Error() {
+		t.Errorf("unknown errors should pass through unchanged, got: %v", classified)
 	}
 }
 

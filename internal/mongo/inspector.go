@@ -85,13 +85,13 @@ func NewInspector(ctx context.Context, cfg Config) (*Inspector, error) {
 
 	client, err := mongo.Connect(opts)
 	if err != nil {
-		return nil, fmt.Errorf("connect: %w", err)
+		return nil, classifyConnectError(fmt.Errorf("connect: %w", err))
 	}
 
 	dbc := &mongoDBClient{client: client}
 	if err := dbc.Ping(ctx); err != nil {
 		_ = dbc.Disconnect(ctx)
-		return nil, fmt.Errorf("ping: %w", err)
+		return nil, classifyConnectError(fmt.Errorf("connect: %w", err))
 	}
 
 	return &Inspector{db: dbc}, nil
@@ -698,6 +698,32 @@ func splitNamespace(ns string) (string, string) {
 	return parts[0], parts[1]
 }
 
+// classifyConnectError wraps connection errors with actionable troubleshooting hints.
+func classifyConnectError(err error) error {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "context deadline exceeded") &&
+		(strings.Contains(msg, "ReplicaSetNoPrimary") || strings.Contains(msg, "server selection")):
+		return fmt.Errorf("%w\n\nhint: could not reach any replica set member within the timeout. Common causes:\n"+
+			"  - IP address not in Atlas Network Access list\n"+
+			"  - firewall or VPN blocking port 27017\n"+
+			"  - DNS cannot resolve SRV record (try: nslookup _mongodb._tcp.<host>)\n"+
+			"  - increase timeout with --timeout 60s\n"+
+			"  see: docs/troubleshooting.md", err)
+	case strings.Contains(msg, "authentication failed") || strings.Contains(msg, "auth error"):
+		return fmt.Errorf("%w\n\nhint: authentication failed. Check username, password, and authSource in your URI\n"+
+			"  see: docs/troubleshooting.md", err)
+	case strings.Contains(msg, "connection refused"):
+		return fmt.Errorf("%w\n\nhint: connection refused. Is MongoDB running at this address?\n"+
+			"  see: docs/troubleshooting.md", err)
+	case strings.Contains(msg, "no such host") || strings.Contains(msg, "server misbehaving"):
+		return fmt.Errorf("%w\n\nhint: DNS resolution failed. Check the hostname in your URI\n"+
+			"  see: docs/troubleshooting.md", err)
+	default:
+		return err
+	}
+}
+
 func isNamespaceNotFoundErr(err error) bool {
 	var cmdErr mongo.CommandError
 	if errors.As(err, &cmdErr) && cmdErr.Code == 26 {
@@ -925,6 +951,8 @@ func toString(v any) string {
 }
 
 // bsonRawToKeyFields converts a bson.Raw key document to ordered []KeyField.
+// Handles numeric directions (1, -1) and string index types ("text", "2dsphere",
+// "2d", "hashed") which are stored as Direction=0 (non-directional).
 func bsonRawToKeyFields(raw bson.Raw) []KeyField {
 	elems, err := raw.Elements()
 	if err != nil {
@@ -932,10 +960,16 @@ func bsonRawToKeyFields(raw bson.Raw) []KeyField {
 	}
 	fields := make([]KeyField, 0, len(elems))
 	for _, elem := range elems {
-		fields = append(fields, KeyField{
-			Field:     elem.Key(),
-			Direction: int(elem.Value().AsInt64()),
-		})
+		kf := KeyField{Field: elem.Key()}
+		v := elem.Value()
+		switch v.Type {
+		case bson.TypeInt32, bson.TypeInt64, bson.TypeDouble:
+			kf.Direction = int(v.AsInt64())
+		default:
+			// text, 2dsphere, 2d, hashed — non-directional
+			kf.Direction = 0
+		}
+		fields = append(fields, kf)
 	}
 	return fields
 }

@@ -28,7 +28,7 @@ export class MongospectreCodeActionProvider implements vscode.CodeActionProvider
         continue;
       }
 
-      const data = diagnostic.data as FindingDiagnosticData | undefined;
+      const data = (diagnostic as vscode.Diagnostic & { data?: unknown }).data as FindingDiagnosticData | undefined;
       const findingType = typeof diagnostic.code === "string" ? diagnostic.code : data?.type;
       if (!findingType || !data?.collection) {
         continue;

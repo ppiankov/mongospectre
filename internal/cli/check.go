@@ -77,7 +77,7 @@ func newCheckCmd() *cobra.Command {
 				Database: database,
 			})
 			if err != nil {
-				return fmt.Errorf("connect: %w", err)
+				return err
 			}
 			defer func() { _ = inspector.Close(ctx) }()
 

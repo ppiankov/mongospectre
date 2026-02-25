@@ -374,6 +374,10 @@ make lint     # golangci-lint
 make bench    # run benchmarks
 ```
 
+## Troubleshooting
+
+See [docs/troubleshooting.md](docs/troubleshooting.md) for help with connection errors, authentication failures, and timeout tuning.
+
 ## Known Limitations
 
 - Variable tracking is limited to same-file assignments (`collName := "users"` then `db.Collection(collName)`)

@@ -46,7 +46,7 @@ func newCompareCmd() *cobra.Command {
 				Database: sourceDB,
 			})
 			if err != nil {
-				return fmt.Errorf("connect source: %w", err)
+				return fmt.Errorf("source: %w", err)
 			}
 			defer func() { _ = sourceInspector.Close(ctx) }()
 
@@ -65,7 +65,7 @@ func newCompareCmd() *cobra.Command {
 				Database: targetDB,
 			})
 			if err != nil {
-				return fmt.Errorf("connect target: %w", err)
+				return fmt.Errorf("target: %w", err)
 			}
 			defer func() { _ = targetInspector.Close(ctx) }()
 
