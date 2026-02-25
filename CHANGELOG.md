@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-02-26
+
+### Added
+
+- Atlas API fallback for `--audit-users` on Atlas clusters where native `usersInfo` is unavailable
+- `ListDatabaseUsers` Atlas Admin API method (`GET /api/atlas/v2/groups/{groupId}/databaseUsers`)
+- `ATLAS_USER_NO_SCOPE` finding for Atlas users with no cluster scope restriction
+- Atlas client tests (`internal/atlas/client_test.go`)
+
+### Changed
+
+- `--audit-users` warning message now suggests Atlas API credentials when running on Atlas
+- Troubleshooting guide expanded with Atlas-specific user audit instructions
+
 ## [0.2.4] - 2026-02-25
 
 ### Fixed
