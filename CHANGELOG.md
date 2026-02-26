@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-02-26
+
+### Fixed
+
+- Atlas API 406 error: use versioned `Accept` header required by Atlas Admin API v2
+
 ## [0.2.5] - 2026-02-26
 
 ### Added
