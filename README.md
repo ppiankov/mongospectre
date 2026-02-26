@@ -136,6 +136,27 @@ Inspects MongoDB without code scanning. Detects:
 mongospectre audit --uri "mongodb://..." [--database mydb] [--format text|json|sarif|spectrehub]
 ```
 
+#### User Audit on Atlas
+
+`--audit-users` audits database user roles and permissions. On self-hosted MongoDB this uses native `db.getUsers()` (requires `userAdmin` role). On **Atlas**, this command is unavailable — Atlas manages users through its own control plane.
+
+To audit users on Atlas, provide Atlas API credentials. mongospectre will automatically fall back to the Atlas Admin API:
+
+```bash
+mongospectre audit --uri "mongodb://..." --audit-users \
+  --atlas-public-key "$ATLAS_PUBLIC_KEY" \
+  --atlas-private-key "$ATLAS_PRIVATE_KEY"
+```
+
+**Creating Atlas API keys:**
+
+1. Atlas > Project Settings > Access Manager > API Keys
+2. Create API Key with **Project Read Only** role
+3. Add your IP to the API key access list
+4. Save both the **Public Key** and **Private Key** (private key is shown only once)
+
+Environment variables: `ATLAS_PUBLIC_KEY`, `ATLAS_PRIVATE_KEY`, `ATLAS_PROJECT_ID`, `ATLAS_CLUSTER`.
+
 ### `check` — Code + Cluster Diff
 
 Scans a code repository and compares collection references against live MongoDB:
