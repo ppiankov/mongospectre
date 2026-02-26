@@ -334,7 +334,7 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", "application/vnd.atlas.2024-10-23+json")
 	req.Header.Set("User-Agent", "mongospectre")
 
 	resp, err := c.httpClient.Do(req)
