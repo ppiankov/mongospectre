@@ -20,6 +20,7 @@ func newCheckCmd() *cobra.Command {
 		failOnMissing bool
 		profile       bool
 		profileLimit  int
+		sampleSize    int
 		noIgnore      bool
 		baseline      string
 		interactive   bool
@@ -122,6 +123,15 @@ func newCheckCmd() *cobra.Command {
 					findings = append(findings, analyzer.CorrelateProfiler(&scan, entries)...)
 				}
 			}
+			if sampleSize > 0 {
+				samples, sampleErr := inspector.SampleDocuments(ctx, database, int64(sampleSize))
+				if sampleErr != nil {
+					return fmt.Errorf("sample documents: %w", sampleErr)
+				}
+				if len(samples) > 0 {
+					findings = append(findings, analyzer.DetectSchemaDrift(&scan, samples)...)
+				}
+			}
 
 			// Apply ignore file.
 			if !noIgnore {
@@ -201,6 +211,7 @@ func newCheckCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&failOnMissing, "fail-on-missing", false, "exit 2 if any MISSING_COLLECTION found")
 	cmd.Flags().BoolVar(&profile, "profile", false, "read system.profile and correlate slow queries to source locations")
 	cmd.Flags().IntVar(&profileLimit, "profile-limit", 1000, "maximum number of profiler entries to read")
+	cmd.Flags().IntVar(&sampleSize, "sample", 0, "sample N documents per collection for field-level drift detection (0 to disable)")
 	cmd.Flags().BoolVar(&noIgnore, "no-ignore", false, "bypass .mongospectreignore file")
 	cmd.Flags().StringVar(&baseline, "baseline", "", "path to previous JSON report for diff comparison")
 	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "launch interactive terminal UI (text format only)")

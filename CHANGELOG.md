@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-02-27
+
+### Added
+
+- Schema sampling and field-level drift detection (`--sample` flag on `check` command)
+- `SampleDocuments` inspector method using `$sample` aggregation
+- Four new findings: `MISSING_FIELD`, `RARE_FIELD`, `UNDOCUMENTED_FIELD`, `TYPE_INCONSISTENCY`
+
 ## [0.2.7] - 2026-02-27
 
 ### Added

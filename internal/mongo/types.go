@@ -120,3 +120,18 @@ type ShardedCollectionInfo struct {
 	JumboChunks       int64            `json:"jumboChunks"`
 	ChunkLimitHit     bool             `json:"chunkLimitHit,omitempty"`
 }
+
+// FieldSampleResult holds sampled field frequency data for one collection.
+type FieldSampleResult struct {
+	Database   string           `json:"database"`
+	Collection string           `json:"collection"`
+	SampleSize int64            `json:"sampleSize"`
+	Fields     []FieldFrequency `json:"fields"`
+}
+
+// FieldFrequency tracks how often a field path appears and its BSON types.
+type FieldFrequency struct {
+	Path  string           `json:"path"`
+	Count int64            `json:"count"`
+	Types map[string]int64 `json:"types"`
+}

@@ -54,6 +54,10 @@ const (
 	FindingInactiveUser           FindingType = "INACTIVE_USER"
 	FindingFailedAuthOnly         FindingType = "FAILED_AUTH_ONLY"
 	FindingInactivePrivilegedUser FindingType = "INACTIVE_PRIVILEGED_USER"
+	FindingMissingField           FindingType = "MISSING_FIELD"
+	FindingRareField              FindingType = "RARE_FIELD"
+	FindingUndocumentedField      FindingType = "UNDOCUMENTED_FIELD"
+	FindingTypeInconsistency      FindingType = "TYPE_INCONSISTENCY"
 	FindingOK                     FindingType = "OK"
 )
 

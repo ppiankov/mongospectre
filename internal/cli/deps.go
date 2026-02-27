@@ -19,6 +19,7 @@ type inspector interface {
 	InspectSharding(ctx context.Context) (mongoinspect.ShardingInfo, error)
 	InspectUsers(ctx context.Context, dbName string) ([]mongoinspect.UserInfo, error)
 	ListDatabases(ctx context.Context, database string) ([]mongoinspect.DatabaseInfo, error)
+	SampleDocuments(ctx context.Context, database string, sampleSize int64) ([]mongoinspect.FieldSampleResult, error)
 }
 
 type atlasClient interface {

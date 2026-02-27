@@ -1099,3 +1099,235 @@ func containsString(items []string, target string) bool {
 	}
 	return false
 }
+
+func TestBsonTypeName(t *testing.T) {
+	tests := []struct {
+		name string
+		in   any
+		want string
+	}{
+		{"nil", nil, "null"},
+		{"string", "hello", "string"},
+		{"int32", int32(42), "int32"},
+		{"int64", int64(100), "int64"},
+		{"float64", float64(3.14), "double"},
+		{"bool", true, "bool"},
+		{"objectId", bson.ObjectID{}, "objectId"},
+		{"time", time.Now(), "date"},
+		{"bsonDateTime", bson.DateTime(1234567890), "date"},
+		{"bsonM", bson.M{"key": "val"}, "object"},
+		{"bsonD", bson.D{{Key: "k", Value: "v"}}, "object"},
+		{"bsonA", bson.A{"a", "b"}, "array"},
+		{"binary", bson.Binary{Subtype: 0, Data: []byte{1}}, "binData"},
+		{"regex", bson.Regex{Pattern: ".*"}, "regex"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := bsonTypeName(tt.in)
+			if got != tt.want {
+				t.Errorf("bsonTypeName(%T) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFlattenDocument_Flat(t *testing.T) {
+	doc := bson.M{
+		"name": "Alice",
+		"age":  int32(30),
+	}
+	out := make(map[string]map[string]int64)
+	flattenDocument(doc, "", out)
+
+	if _, ok := out["name"]; !ok {
+		t.Fatal("expected 'name' in output")
+	}
+	if out["name"]["string"] != 1 {
+		t.Errorf("name type = %v, want string(1)", out["name"])
+	}
+	if out["age"]["int32"] != 1 {
+		t.Errorf("age type = %v, want int32(1)", out["age"])
+	}
+}
+
+func TestFlattenDocument_Nested(t *testing.T) {
+	doc := bson.M{
+		"address": bson.M{
+			"city": "NYC",
+			"zip":  "10001",
+		},
+	}
+	out := make(map[string]map[string]int64)
+	flattenDocument(doc, "", out)
+
+	if _, ok := out["address.city"]; !ok {
+		t.Fatal("expected 'address.city' in output")
+	}
+	if out["address.city"]["string"] != 1 {
+		t.Errorf("address.city type = %v, want string(1)", out["address.city"])
+	}
+	if _, ok := out["address.zip"]; !ok {
+		t.Fatal("expected 'address.zip' in output")
+	}
+	// Parent object field should also be tracked.
+	if _, ok := out["address"]; !ok {
+		t.Fatal("expected 'address' in output")
+	}
+	if out["address"]["object"] != 1 {
+		t.Errorf("address type = %v, want object(1)", out["address"])
+	}
+}
+
+func TestFlattenDocument_Arrays(t *testing.T) {
+	doc := bson.M{
+		"items": bson.A{
+			bson.M{"sku": "A", "qty": int32(1)},
+			bson.M{"sku": "B", "qty": int32(2)},
+		},
+	}
+	out := make(map[string]map[string]int64)
+	flattenDocument(doc, "", out)
+
+	if _, ok := out["items[].sku"]; !ok {
+		t.Fatal("expected 'items[].sku' in output")
+	}
+	if out["items[].sku"]["string"] != 2 {
+		t.Errorf("items[].sku = %v, want string(2)", out["items[].sku"])
+	}
+	if out["items[].qty"]["int32"] != 2 {
+		t.Errorf("items[].qty = %v, want int32(2)", out["items[].qty"])
+	}
+}
+
+func TestFlattenDocument_MixedTypes(t *testing.T) {
+	// Two documents: one has age as int32, another as string.
+	out := make(map[string]map[string]int64)
+	flattenDocument(bson.M{"age": int32(30)}, "", out)
+	flattenDocument(bson.M{"age": "thirty"}, "", out)
+
+	if out["age"]["int32"] != 1 {
+		t.Errorf("age int32 = %d, want 1", out["age"]["int32"])
+	}
+	if out["age"]["string"] != 1 {
+		t.Errorf("age string = %d, want 1", out["age"]["string"])
+	}
+}
+
+func TestFlattenDocument_NullValue(t *testing.T) {
+	doc := bson.M{"middle_name": nil}
+	out := make(map[string]map[string]int64)
+	flattenDocument(doc, "", out)
+
+	if out["middle_name"]["null"] != 1 {
+		t.Errorf("middle_name = %v, want null(1)", out["middle_name"])
+	}
+}
+
+func TestSampleDocuments(t *testing.T) {
+	mc := &mockClient{
+		listDBsResult: mongo.ListDatabasesResult{
+			Databases: []mongo.DatabaseSpecification{
+				{Name: "testdb", SizeOnDisk: 1024},
+			},
+		},
+		collSpecs: []mongo.CollectionSpecification{
+			{Name: "users", Type: "collection"},
+		},
+		aggregateData: []bson.M{
+			{"_id": bson.ObjectID{}, "name": "Alice", "age": int32(30)},
+			{"_id": bson.ObjectID{}, "name": "Bob", "age": int32(25)},
+		},
+	}
+	insp := &Inspector{db: mc}
+
+	results, err := insp.SampleDocuments(context.Background(), "testdb", 100)
+	if err != nil {
+		t.Fatalf("SampleDocuments: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	r := results[0]
+	if r.Database != "testdb" || r.Collection != "users" {
+		t.Errorf("result = %s.%s, want testdb.users", r.Database, r.Collection)
+	}
+	if r.SampleSize != 2 {
+		t.Errorf("SampleSize = %d, want 2", r.SampleSize)
+	}
+
+	// Check that fields are present.
+	fieldMap := make(map[string]FieldFrequency)
+	for _, f := range r.Fields {
+		fieldMap[f.Path] = f
+	}
+	if _, ok := fieldMap["name"]; !ok {
+		t.Error("expected 'name' field in results")
+	}
+	if _, ok := fieldMap["age"]; !ok {
+		t.Error("expected 'age' field in results")
+	}
+	if fieldMap["name"].Count != 2 {
+		t.Errorf("name count = %d, want 2", fieldMap["name"].Count)
+	}
+}
+
+func TestSampleDocuments_Empty(t *testing.T) {
+	mc := &mockClient{
+		listDBsResult: mongo.ListDatabasesResult{
+			Databases: []mongo.DatabaseSpecification{
+				{Name: "testdb", SizeOnDisk: 1024},
+			},
+		},
+		collSpecs: []mongo.CollectionSpecification{
+			{Name: "users", Type: "collection"},
+		},
+		aggregateData: []bson.M{}, // empty — no documents
+	}
+	insp := &Inspector{db: mc}
+
+	results, err := insp.SampleDocuments(context.Background(), "testdb", 100)
+	if err != nil {
+		t.Fatalf("SampleDocuments: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for empty collection, got %d", len(results))
+	}
+}
+
+func TestSampleDocuments_SkipsViews(t *testing.T) {
+	mc := &mockClient{
+		listDBsResult: mongo.ListDatabasesResult{
+			Databases: []mongo.DatabaseSpecification{
+				{Name: "testdb", SizeOnDisk: 1024},
+			},
+		},
+		collSpecs: []mongo.CollectionSpecification{
+			{Name: "my_view", Type: "view"},
+		},
+	}
+	insp := &Inspector{db: mc}
+
+	results, err := insp.SampleDocuments(context.Background(), "testdb", 100)
+	if err != nil {
+		t.Fatalf("SampleDocuments: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for views, got %d", len(results))
+	}
+}
+
+func TestSampleDocuments_NoDatabases(t *testing.T) {
+	mc := &mockClient{
+		listDBsResult: mongo.ListDatabasesResult{},
+	}
+	insp := &Inspector{db: mc}
+
+	results, err := insp.SampleDocuments(context.Background(), "", 100)
+	if err != nil {
+		t.Fatalf("SampleDocuments: %v", err)
+	}
+	if results != nil {
+		t.Errorf("expected nil for no databases, got %v", results)
+	}
+}

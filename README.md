@@ -28,7 +28,7 @@ Part of the **Spectre** family — code-vs-reality drift detection tools.
 
 ## Project Status
 
-**Status: Alpha** · **v0.2.7** · Pre-1.0
+**Status: Alpha** · **v0.2.8** · Pre-1.0
 
 | Milestone | Status |
 |-----------|--------|
@@ -228,7 +228,7 @@ Multi-arch images (amd64/arm64) are published to `ghcr.io/ppiankov/mongospectre`
 ### GitHub Action
 
 ```yaml
-- uses: ppiankov/mongospectre@v0.2.7
+- uses: ppiankov/mongospectre@v0.2.8
   with:
     command: audit
     uri: ${{ secrets.MONGODB_URI }}

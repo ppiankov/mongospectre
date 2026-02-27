@@ -29,12 +29,15 @@ type fakeInspector struct {
 	validatorsErr    error
 	shardingRes      mongoinspect.ShardingInfo
 	shardingErr      error
+	sampleDocsRes    []mongoinspect.FieldSampleResult
+	sampleDocsErr    error
 	closeErr         error
 
 	inspectCalls         []string
 	listDatabasesCalls   []string
 	inspectUsersCalls    []string
 	profilerCalls        []profilerCall
+	sampleDocsCalls      []sampleDocsCall
 	inspectShardingCalls int
 	closeCalls           int
 }
@@ -42,6 +45,11 @@ type fakeInspector struct {
 type profilerCall struct {
 	database string
 	limit    int64
+}
+
+type sampleDocsCall struct {
+	database   string
+	sampleSize int64
 }
 
 type fakeAtlasClient struct {
@@ -135,6 +143,14 @@ func (f *fakeInspector) InspectSharding(context.Context) (mongoinspect.ShardingI
 		return mongoinspect.ShardingInfo{}, f.shardingErr
 	}
 	return f.shardingRes, nil
+}
+
+func (f *fakeInspector) SampleDocuments(_ context.Context, database string, sampleSize int64) ([]mongoinspect.FieldSampleResult, error) {
+	f.sampleDocsCalls = append(f.sampleDocsCalls, sampleDocsCall{database: database, sampleSize: sampleSize})
+	if f.sampleDocsErr != nil {
+		return nil, f.sampleDocsErr
+	}
+	return append([]mongoinspect.FieldSampleResult(nil), f.sampleDocsRes...), nil
 }
 
 func (f *fakeInspector) ListDatabases(_ context.Context, database string) ([]mongoinspect.DatabaseInfo, error) {

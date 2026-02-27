@@ -318,6 +318,171 @@ func (i *Inspector) ReadProfiler(ctx context.Context, database string, limit int
 	return entries, nil
 }
 
+// SampleDocuments samples documents from each collection and builds field frequency maps.
+// Uses $sample aggregation to randomly select documents, then flattens them into dot-notation
+// field paths with BSON type counts. Skips views and system collections.
+func (i *Inspector) SampleDocuments(ctx context.Context, database string, sampleSize int64) ([]FieldSampleResult, error) {
+	if sampleSize <= 0 {
+		sampleSize = 100
+	}
+
+	dbs, err := i.ListDatabases(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	if len(dbs) == 0 {
+		return nil, nil
+	}
+
+	var results []FieldSampleResult
+	for _, db := range dbs {
+		specs, err := i.db.ListCollectionSpecs(ctx, db.Name)
+		if err != nil {
+			return nil, fmt.Errorf("list collections in %s: %w", db.Name, err)
+		}
+
+		for idx := range specs {
+			if specs[idx].Type == "view" || strings.HasPrefix(specs[idx].Name, "system.") {
+				continue
+			}
+
+			pipeline := mongo.Pipeline{
+				bson.D{{Key: "$sample", Value: bson.D{{Key: "size", Value: sampleSize}}}},
+			}
+			cursor, err := i.db.Aggregate(ctx, db.Name, specs[idx].Name, pipeline)
+			if err != nil {
+				if isNamespaceNotFoundErr(err) {
+					continue
+				}
+				return nil, fmt.Errorf("$sample %s.%s: %w", db.Name, specs[idx].Name, err)
+			}
+
+			var docs []bson.M
+			if err := cursor.All(ctx, &docs); err != nil {
+				return nil, fmt.Errorf("read $sample %s.%s: %w", db.Name, specs[idx].Name, err)
+			}
+			if len(docs) == 0 {
+				continue
+			}
+
+			// Build field frequency map: path -> type -> count.
+			fieldTypes := make(map[string]map[string]int64)
+			for _, doc := range docs {
+				flattenDocument(doc, "", fieldTypes)
+			}
+
+			fields := make([]FieldFrequency, 0, len(fieldTypes))
+			for path, types := range fieldTypes {
+				var total int64
+				for _, c := range types {
+					total += c
+				}
+				fields = append(fields, FieldFrequency{
+					Path:  path,
+					Count: total,
+					Types: types,
+				})
+			}
+			sort.Slice(fields, func(a, b int) bool { return fields[a].Path < fields[b].Path })
+
+			results = append(results, FieldSampleResult{
+				Database:   db.Name,
+				Collection: specs[idx].Name,
+				SampleSize: int64(len(docs)),
+				Fields:     fields,
+			})
+		}
+	}
+
+	return results, nil
+}
+
+// flattenDocument recursively walks a BSON document and records each field path
+// with its BSON type into out[path][typeName]++.
+func flattenDocument(doc bson.M, prefix string, out map[string]map[string]int64) {
+	for key, val := range doc {
+		path := key
+		if prefix != "" {
+			path = prefix + "." + key
+		}
+
+		typeName := bsonTypeName(val)
+
+		if types, ok := out[path]; ok {
+			types[typeName]++
+		} else {
+			out[path] = map[string]int64{typeName: 1}
+		}
+
+		switch v := val.(type) {
+		case bson.M:
+			flattenDocument(v, path, out)
+		case bson.D:
+			m := make(bson.M, len(v))
+			for _, e := range v {
+				m[e.Key] = e.Value
+			}
+			flattenDocument(m, path, out)
+		case bson.A:
+			flattenArray(v, path, out)
+		case []any:
+			flattenArray(bson.A(v), path, out)
+		}
+	}
+}
+
+// flattenArray walks array elements and records nested fields under path[].
+func flattenArray(arr bson.A, path string, out map[string]map[string]int64) {
+	arrayPath := path + "[]"
+	for _, elem := range arr {
+		switch v := elem.(type) {
+		case bson.M:
+			flattenDocument(v, arrayPath, out)
+		case bson.D:
+			m := make(bson.M, len(v))
+			for _, e := range v {
+				m[e.Key] = e.Value
+			}
+			flattenDocument(m, arrayPath, out)
+		}
+	}
+}
+
+// bsonTypeName returns a human-readable BSON type name for a Go value.
+func bsonTypeName(v any) string {
+	if v == nil {
+		return "null"
+	}
+	switch v.(type) {
+	case string:
+		return "string"
+	case int32:
+		return "int32"
+	case int64:
+		return "int64"
+	case float64:
+		return "double"
+	case bool:
+		return "bool"
+	case bson.ObjectID:
+		return "objectId"
+	case time.Time:
+		return "date"
+	case bson.DateTime:
+		return "date"
+	case bson.M, bson.D:
+		return "object"
+	case bson.A, []any:
+		return "array"
+	case bson.Binary:
+		return "binData"
+	case bson.Regex:
+		return "regex"
+	default:
+		return "unknown"
+	}
+}
+
 // Inspect gathers full metadata for all collections in the given databases.
 func (i *Inspector) Inspect(ctx context.Context, database string) ([]CollectionInfo, error) {
 	dbs, err := i.ListDatabases(ctx, database)
