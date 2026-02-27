@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-02-27
+
+### Added
+
+- Inactive user detection via Atlas access history API (`INACTIVE_USER`, `FAILED_AUTH_ONLY`, `INACTIVE_PRIVILEGED_USER`)
+- `ListAccessLogs` Atlas Admin API method with pagination support
+- Inactive user analysis runs automatically with `--audit-users` when Atlas credentials are provided
+
 ## [0.2.6] - 2026-02-26
 
 ### Fixed
