@@ -150,6 +150,18 @@ func newAuditCmd() *cobra.Command {
 				// Atlas-specific user findings (scope analysis).
 				if len(atlasUsers) > 0 {
 					findings = append(findings, analyzer.AuditAtlasUsers(atlasUsers)...)
+
+					// Atlas access log analysis: detect inactive users.
+					accessLogs := collectAccessLogs(ctx, cmd, atlasOptions{
+						PublicKey:  atlasPublicKey,
+						PrivateKey: atlasPrivateKey,
+						ProjectID:  atlasProject,
+						Cluster:    atlasCluster,
+					}, uri)
+					if accessLogs != nil {
+						inactiveFindings := analyzer.DetectInactiveUsers(atlasUsers, accessLogs)
+						findings = append(findings, inactiveFindings...)
+					}
 				}
 			}
 

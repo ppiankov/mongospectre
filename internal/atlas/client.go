@@ -292,6 +292,57 @@ func (c *Client) ListDatabaseUsers(ctx context.Context, projectID string) ([]Dat
 	return users, nil
 }
 
+// ListAccessLogs returns database authentication events for an Atlas cluster.
+// Atlas retains access logs for 7 days and returns max 25 entries per page.
+func (c *Client) ListAccessLogs(ctx context.Context, projectID, clusterName string) ([]AccessLogEntry, error) {
+	if strings.TrimSpace(projectID) == "" {
+		return nil, fmt.Errorf("atlas project id is required")
+	}
+	if strings.TrimSpace(clusterName) == "" {
+		return nil, fmt.Errorf("atlas cluster name is required")
+	}
+
+	path := fmt.Sprintf("/api/atlas/v2/groups/%s/dbAccessHistory/clusters/%s",
+		url.PathEscape(projectID), url.PathEscape(clusterName))
+
+	const pageSize = 25
+	var allEntries []AccessLogEntry
+
+	for pageNum := 1; ; pageNum++ {
+		var envelope listEnvelope[map[string]any]
+		if err := c.get(ctx, path, url.Values{
+			"itemsPerPage": []string{strconv.Itoa(pageSize)},
+			"pageNum":      []string{strconv.Itoa(pageNum)},
+			"includeCount": []string{"false"},
+		}, &envelope); err != nil {
+			return nil, err
+		}
+
+		for _, raw := range envelope.Results {
+			entry := AccessLogEntry{
+				AuthSource:    firstString(raw, "authSource"),
+				Username:      firstString(raw, "username"),
+				Timestamp:     firstString(raw, "timestamp"),
+				IPAddress:     firstString(raw, "ipAddress"),
+				FailureReason: firstString(raw, "failureReason"),
+			}
+			if v, ok := raw["authResult"].(bool); ok {
+				entry.AuthResult = v
+			}
+			if entry.Username == "" {
+				continue
+			}
+			allEntries = append(allEntries, entry)
+		}
+
+		if len(envelope.Results) < pageSize {
+			break
+		}
+	}
+
+	return allEntries, nil
+}
+
 // ResolveProjectIDByCluster discovers a project containing the given cluster.
 func (c *Client) ResolveProjectIDByCluster(ctx context.Context, clusterName string) (string, error) {
 	clusterName = strings.TrimSpace(clusterName)

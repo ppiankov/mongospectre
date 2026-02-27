@@ -81,3 +81,13 @@ type DatabaseUserScope struct {
 	Name string `json:"name"`
 	Type string `json:"type"` // "CLUSTER" or "DATA_LAKE"
 }
+
+// AccessLogEntry is a single authentication event from the Atlas access history API.
+type AccessLogEntry struct {
+	AuthResult    bool   `json:"authResult"`
+	AuthSource    string `json:"authSource"`
+	Username      string `json:"username"`
+	Timestamp     string `json:"timestamp"`
+	IPAddress     string `json:"ipAddress"`
+	FailureReason string `json:"failureReason,omitempty"`
+}

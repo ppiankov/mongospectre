@@ -272,6 +272,53 @@ func atlasUsersToUserInfo(users []atlas.DatabaseUser) []mongoinspect.UserInfo {
 	return result
 }
 
+// collectAccessLogs fetches authentication history via the Atlas Admin API.
+// Returns nil if Atlas credentials are not available, cluster name is unknown,
+// or the API call fails (graceful degradation for M0/M2/M5 and insufficient roles).
+func collectAccessLogs(
+	ctx context.Context,
+	cmd *cobra.Command,
+	opts atlasOptions,
+	mongoURI string,
+) []atlas.AccessLogEntry {
+	resolved := resolveAtlasOptions(opts)
+
+	if resolved.PublicKey == "" || resolved.PrivateKey == "" {
+		return nil
+	}
+
+	if resolved.Cluster == "" {
+		resolved.Cluster = deriveAtlasClusterName(mongoURI)
+	}
+
+	client, err := newAtlasClient(atlas.Config{
+		PublicKey:  resolved.PublicKey,
+		PrivateKey: resolved.PrivateKey,
+	})
+	if err != nil {
+		return nil
+	}
+
+	projectID := resolved.ProjectID
+	clusterName := resolved.Cluster
+	projectID, clusterName = resolveAtlasTarget(ctx, cmd, client, projectID, clusterName)
+	if projectID == "" || clusterName == "" {
+		return nil
+	}
+
+	logs, err := client.ListAccessLogs(ctx, projectID, clusterName)
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+			"warning: access log analysis skipped: %v\n", err)
+		return nil
+	}
+
+	if verbose {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Fetched %d access log entries\n", len(logs))
+	}
+	return logs
+}
+
 func scanRepoForAtlas(cmd *cobra.Command) (scanner.ScanResult, bool) {
 	cwd, err := os.Getwd()
 	if err != nil {

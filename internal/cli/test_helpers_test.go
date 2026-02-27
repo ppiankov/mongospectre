@@ -61,6 +61,8 @@ type fakeAtlasClient struct {
 	resolveProjectIDErr error
 	databaseUsersRes    []atlas.DatabaseUser
 	databaseUsersErr    error
+	accessLogsRes       []atlas.AccessLogEntry
+	accessLogsErr       error
 
 	getClusterCalls     []string
 	suggestedIndexCalls []string
@@ -70,6 +72,7 @@ type fakeAtlasClient struct {
 	listClustersCalls   []string
 	resolveProjectCalls []string
 	databaseUsersCalls  []string
+	accessLogsCalls     []string
 }
 
 func (f *fakeInspector) Close(context.Context) error {
@@ -204,6 +207,14 @@ func (f *fakeAtlasClient) ListDatabaseUsers(_ context.Context, projectID string)
 		return nil, f.databaseUsersErr
 	}
 	return append([]atlas.DatabaseUser(nil), f.databaseUsersRes...), nil
+}
+
+func (f *fakeAtlasClient) ListAccessLogs(_ context.Context, projectID, clusterName string) ([]atlas.AccessLogEntry, error) {
+	f.accessLogsCalls = append(f.accessLogsCalls, projectID+"/"+clusterName)
+	if f.accessLogsErr != nil {
+		return nil, f.accessLogsErr
+	}
+	return append([]atlas.AccessLogEntry(nil), f.accessLogsRes...), nil
 }
 
 func stubNewInspector(t *testing.T, fn func(context.Context, mongoinspect.Config) (inspector, error)) {

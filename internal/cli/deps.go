@@ -30,6 +30,7 @@ type atlasClient interface {
 	ListClusters(ctx context.Context, projectID string) ([]atlas.Cluster, error)
 	ResolveProjectIDByCluster(ctx context.Context, clusterName string) (string, error)
 	ListDatabaseUsers(ctx context.Context, projectID string) ([]atlas.DatabaseUser, error)
+	ListAccessLogs(ctx context.Context, projectID, clusterName string) ([]atlas.AccessLogEntry, error)
 }
 
 var (
