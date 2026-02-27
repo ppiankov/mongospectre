@@ -1,14 +1,13 @@
 {
   "name": "mongospectre",
   "displayName": "mongospectre",
-  "description": "Inline MongoDB collection diagnostics powered by mongospectre.",
-  "version": "0.1.0",
+  "description": "Audit MongoDB like you mean it.",
+  "version": "0.1.5",
   "publisher": "ppiankov",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ppiankov/mongospectre.git",
-    "directory": "vscode-mongospectre"
+    "url": "https://github.com/ppiankov/mongospectre"
   },
   "homepage": "https://github.com/ppiankov/mongospectre",
   "bugs": {
@@ -82,5 +81,6 @@
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^2.26.0",
     "typescript": "^5.8.2"
-  }
+  },
+  "icon": "icon.png"
 }
