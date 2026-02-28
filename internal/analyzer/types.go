@@ -58,6 +58,14 @@ const (
 	FindingRareField              FindingType = "RARE_FIELD"
 	FindingUndocumentedField      FindingType = "UNDOCUMENTED_FIELD"
 	FindingTypeInconsistency      FindingType = "TYPE_INCONSISTENCY"
+	FindingURINoAuth              FindingType = "URI_NO_AUTH"
+	FindingURINoTLS               FindingType = "URI_NO_TLS"
+	FindingURINoRetryWrites       FindingType = "URI_NO_RETRY_WRITES"
+	FindingURIPlaintextPassword   FindingType = "URI_PLAINTEXT_PASSWORD"
+	FindingURIDefaultAuthSource   FindingType = "URI_DEFAULT_AUTH_SOURCE"
+	FindingURIShortTimeout        FindingType = "URI_SHORT_TIMEOUT"
+	FindingURINoReadPreference    FindingType = "URI_NO_READ_PREFERENCE"
+	FindingURIDirectConnection    FindingType = "URI_DIRECT_CONNECTION"
 	FindingOK                     FindingType = "OK"
 )
 

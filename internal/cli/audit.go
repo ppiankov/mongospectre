@@ -26,6 +26,7 @@ func newAuditCmd() *cobra.Command {
 		atlasCluster    string
 		interactive     bool
 		noInteractive   bool
+		lintURI         bool
 	)
 
 	cmd := &cobra.Command{
@@ -86,7 +87,14 @@ func newAuditCmd() *cobra.Command {
 				}
 			}
 
-			findings := analyzer.Audit(collections)
+			var findings []analyzer.Finding
+
+			// URI linting: static analysis before connecting.
+			if lintURI {
+				findings = append(findings, analyzer.LintURI(uri)...)
+			}
+
+			findings = append(findings, analyzer.Audit(collections)...)
 
 			if auditUsers {
 				var allUsers []mongoinspect.UserInfo
@@ -261,6 +269,7 @@ func newAuditCmd() *cobra.Command {
 	cmd.Flags().StringVar(&atlasCluster, "atlas-cluster", "", "MongoDB Atlas cluster name (auto-derived from URI if possible)")
 	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "launch interactive terminal UI (text format only)")
 	cmd.Flags().BoolVar(&noInteractive, "no-interactive", false, "force non-interactive output")
+	cmd.Flags().BoolVar(&lintURI, "lint-uri", true, "lint MongoDB URI for common misconfigurations")
 
 	return cmd
 }

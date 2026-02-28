@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-02-28
+
+### Added
+
+- Connection string linting with 8 new URI findings (`--lint-uri` flag, default on)
+- Static URI analysis runs as pre-flight check before connecting to MongoDB
+- New findings: `URI_NO_AUTH`, `URI_NO_TLS`, `URI_NO_RETRY_WRITES`, `URI_PLAINTEXT_PASSWORD`, `URI_DEFAULT_AUTH_SOURCE`, `URI_SHORT_TIMEOUT`, `URI_NO_READ_PREFERENCE`, `URI_DIRECT_CONNECTION`
+
 ## [0.2.8] - 2026-02-27
 
 ### Added

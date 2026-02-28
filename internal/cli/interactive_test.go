@@ -169,7 +169,7 @@ func TestAuditInteractiveFallsBackWhenNonTTY(t *testing.T) {
 		return nil
 	})
 
-	stdout, stderr, err := execCLI(t, "audit", "--uri", "mongodb://stub", "-i", "--timeout", "1s")
+	stdout, stderr, err := execCLI(t, "audit", "--uri", "mongodb://stub", "-i", "--timeout", "1s", "--lint-uri=false")
 	if err != nil {
 		t.Fatalf("audit returned error: %v", err)
 	}

@@ -25,6 +25,7 @@ func newCheckCmd() *cobra.Command {
 		baseline      string
 		interactive   bool
 		noInteractive bool
+		lintURI       bool
 	)
 
 	cmd := &cobra.Command{
@@ -109,8 +110,14 @@ func newCheckCmd() *cobra.Command {
 			}
 			collections = mergeCollectionValidators(collections, validators)
 
+			// URI linting: static analysis before diff.
+			var findings []analyzer.Finding
+			if lintURI {
+				findings = append(findings, analyzer.LintURI(uri)...)
+			}
+
 			// Run diff
-			findings := analyzer.Diff(&scan, collections)
+			findings = append(findings, analyzer.Diff(&scan, collections)...)
 			if profile {
 				entries, profileErr := inspector.ReadProfiler(ctx, database, int64(profileLimit))
 				if profileErr != nil {
@@ -216,6 +223,7 @@ func newCheckCmd() *cobra.Command {
 	cmd.Flags().StringVar(&baseline, "baseline", "", "path to previous JSON report for diff comparison")
 	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "launch interactive terminal UI (text format only)")
 	cmd.Flags().BoolVar(&noInteractive, "no-interactive", false, "force non-interactive output")
+	cmd.Flags().BoolVar(&lintURI, "lint-uri", true, "lint MongoDB URI for common misconfigurations")
 
 	return cmd
 }
