@@ -3,6 +3,9 @@ package analyzer
 import (
 	"encoding/json"
 	"os"
+	"time"
+
+	mongoinspect "github.com/ppiankov/mongospectre/internal/mongo"
 )
 
 // BaselineStatus indicates whether a finding is new, resolved, or unchanged.
@@ -22,7 +25,14 @@ type BaselineFinding struct {
 
 // baselineReport is the minimal structure needed to load a previous JSON report.
 type baselineReport struct {
-	Findings []Finding `json:"findings"`
+	Metadata    baselineMetadata              `json:"metadata"`
+	Findings    []Finding                     `json:"findings"`
+	Collections []mongoinspect.CollectionInfo `json:"collections"`
+}
+
+// baselineMetadata holds the subset of report metadata needed for growth analysis.
+type baselineMetadata struct {
+	Timestamp string `json:"timestamp"`
 }
 
 // LoadBaseline reads a previous JSON report file and returns its findings.
@@ -36,6 +46,25 @@ func LoadBaseline(path string) ([]Finding, error) {
 		return nil, err
 	}
 	return report.Findings, nil
+}
+
+// LoadBaselineWithCollections reads a previous JSON report and returns findings,
+// collection stats, and the report timestamp. Missing collections or timestamp
+// return zero values without error (caller decides whether to skip growth analysis).
+func LoadBaselineWithCollections(path string) ([]Finding, []mongoinspect.CollectionInfo, time.Time, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, time.Time{}, err
+	}
+	var report baselineReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		return nil, nil, time.Time{}, err
+	}
+	var ts time.Time
+	if report.Metadata.Timestamp != "" {
+		ts, _ = time.Parse(time.RFC3339, report.Metadata.Timestamp)
+	}
+	return report.Findings, report.Collections, ts, nil
 }
 
 // DiffBaseline compares current findings against baseline findings.

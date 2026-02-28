@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.14] - 2026-02-28
+
+### Added
+
+- Collection growth tracking via existing `--baseline` comparison flow
+- `LoadBaselineWithCollections` parses collection stats and timestamp from baseline JSON reports
+- Four new findings: `RAPID_GROWTH`, `INDEX_GROWTH_OUTPACING_DATA`, `APPROACHING_LIMIT`, `STORAGE_RECLAIM`
+- `audit --format json` now includes `collections` array for use as future baselines
+
 ## [0.2.13] - 2026-02-28
 
 ### Added

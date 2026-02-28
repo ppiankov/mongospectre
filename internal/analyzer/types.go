@@ -88,6 +88,10 @@ const (
 	FindingOplogSmall             FindingType = "OPLOG_SMALL"
 	FindingNoHiddenMember         FindingType = "NO_HIDDEN_MEMBER"
 	FindingPriorityZeroMajority   FindingType = "PRIORITY_ZERO_MAJORITY"
+	FindingRapidGrowth            FindingType = "RAPID_GROWTH"
+	FindingIndexGrowthOutpacing   FindingType = "INDEX_GROWTH_OUTPACING_DATA"
+	FindingApproachingLimit       FindingType = "APPROACHING_LIMIT"
+	FindingStorageReclaim         FindingType = "STORAGE_RECLAIM"
 	FindingOK                     FindingType = "OK"
 )
 

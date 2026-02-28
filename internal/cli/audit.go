@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ppiankov/mongospectre/internal/analyzer"
 	"github.com/ppiankov/mongospectre/internal/atlas"
@@ -229,6 +230,24 @@ func newAuditCmd() *cobra.Command {
 			}, uri, collections)
 			findings = append(findings, atlasFindings...)
 
+			// Baseline: load collections for growth detection, then diff findings.
+			var baselineFindings []analyzer.Finding
+			if baseline != "" {
+				var baselineCollections []mongoinspect.CollectionInfo
+				var baselineTime time.Time
+				var blErr error
+				baselineFindings, baselineCollections, baselineTime, blErr = analyzer.LoadBaselineWithCollections(baseline)
+				if blErr != nil {
+					return fmt.Errorf("load baseline: %w", blErr)
+				}
+				if len(baselineCollections) > 0 && len(collections) > 0 {
+					elapsed := time.Since(baselineTime)
+					if !baselineTime.IsZero() {
+						findings = append(findings, analyzer.DetectGrowth(collections, baselineCollections, elapsed)...)
+					}
+				}
+			}
+
 			// Apply ignore file.
 			if !noIgnore {
 				cwd, _ := os.Getwd()
@@ -243,12 +262,8 @@ func newAuditCmd() *cobra.Command {
 				}
 			}
 
-			// Baseline comparison.
+			// Baseline diff display.
 			if baseline != "" {
-				baselineFindings, blErr := analyzer.LoadBaseline(baseline)
-				if blErr != nil {
-					return fmt.Errorf("load baseline: %w", blErr)
-				}
 				diff := analyzer.DiffBaseline(findings, baselineFindings)
 				reporter.WriteBaselineDiff(cmd.OutOrStdout(), diff)
 			}
@@ -262,6 +277,7 @@ func newAuditCmd() *cobra.Command {
 				MongoDBVersion: info.Version,
 				URIHash:        reporter.HashURI(uri),
 			}
+			report.Collections = collections
 
 			renderedInteractive, err := maybeRenderInteractive(cmd, &report, collections, nil, interactiveConfig{
 				force:    interactive,
