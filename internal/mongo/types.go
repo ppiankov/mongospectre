@@ -121,6 +121,16 @@ type ShardedCollectionInfo struct {
 	ChunkLimitHit     bool             `json:"chunkLimitHit,omitempty"`
 }
 
+// SecurityInfo holds server security configuration for hardening audits.
+type SecurityInfo struct {
+	AuthEnabled          bool   `json:"authEnabled"`
+	TLSMode              string `json:"tlsMode"`
+	TLSAllowInvalidCerts bool   `json:"tlsAllowInvalidCerts"`
+	BindIP               string `json:"bindIp"`
+	AuditLogEnabled      bool   `json:"auditLogEnabled"`
+	LocalhostAuthBypass  bool   `json:"localhostAuthBypass"`
+}
+
 // FieldSampleResult holds sampled field frequency data for one collection.
 type FieldSampleResult struct {
 	Database   string           `json:"database"`

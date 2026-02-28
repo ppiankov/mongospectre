@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-02-28
+
+### Added
+
+- Security hardening audit (`--security` flag on `audit` command)
+- `InspectSecurity` inspector method using `getParameter` and `getCmdLineOpts` admin commands
+- Six new findings: `AUTH_DISABLED`, `BIND_ALL_INTERFACES`, `TLS_DISABLED`, `TLS_ALLOW_INVALID_CERTS`, `AUDIT_LOG_DISABLED`, `LOCALHOST_EXCEPTION_ACTIVE`
+- Atlas auto-skip: security audit skipped gracefully on Atlas clusters (hardened by default)
+
 ## [0.2.9] - 2026-02-28
 
 ### Added

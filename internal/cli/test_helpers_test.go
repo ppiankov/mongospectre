@@ -31,6 +31,8 @@ type fakeInspector struct {
 	shardingErr      error
 	sampleDocsRes    []mongoinspect.FieldSampleResult
 	sampleDocsErr    error
+	securityRes      mongoinspect.SecurityInfo
+	securityErr      error
 	closeErr         error
 
 	inspectCalls         []string
@@ -39,6 +41,7 @@ type fakeInspector struct {
 	profilerCalls        []profilerCall
 	sampleDocsCalls      []sampleDocsCall
 	inspectShardingCalls int
+	inspectSecurityCalls int
 	closeCalls           int
 }
 
@@ -143,6 +146,14 @@ func (f *fakeInspector) InspectSharding(context.Context) (mongoinspect.ShardingI
 		return mongoinspect.ShardingInfo{}, f.shardingErr
 	}
 	return f.shardingRes, nil
+}
+
+func (f *fakeInspector) InspectSecurity(context.Context) (mongoinspect.SecurityInfo, error) {
+	f.inspectSecurityCalls++
+	if f.securityErr != nil {
+		return mongoinspect.SecurityInfo{}, f.securityErr
+	}
+	return f.securityRes, nil
 }
 
 func (f *fakeInspector) SampleDocuments(_ context.Context, database string, sampleSize int64) ([]mongoinspect.FieldSampleResult, error) {

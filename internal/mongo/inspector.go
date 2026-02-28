@@ -1117,6 +1117,73 @@ func toString(v any) string {
 
 // bsonRawToKeyFields converts a bson.Raw key document to ordered []KeyField.
 // Handles numeric directions (1, -1) and string index types ("text", "2dsphere",
+// InspectSecurity queries server parameters and command-line options to assess
+// security configuration. Requires admin access. Returns partial results on
+// permission errors rather than failing completely.
+func (i *Inspector) InspectSecurity(ctx context.Context) (SecurityInfo, error) {
+	var info SecurityInfo
+
+	// getParameter: auth, TLS, localhost bypass.
+	paramResult := i.db.RunCommand(ctx, "admin", bson.D{{Key: "getParameter", Value: "*"}})
+	var params bson.M
+	if err := paramResult.Decode(&params); err != nil {
+		return info, fmt.Errorf("getParameter: %w", err)
+	}
+
+	// authenticationMechanisms: non-empty array means auth is active.
+	if mechs, ok := params["authenticationMechanisms"]; ok {
+		if arr, isArr := mechs.(bson.A); isArr && len(arr) > 0 {
+			info.AuthEnabled = true
+		}
+	}
+
+	if mode, ok := params["tlsMode"].(string); ok {
+		info.TLSMode = mode
+	}
+	if bypass, ok := params["enableLocalhostAuthBypass"].(bool); ok {
+		info.LocalhostAuthBypass = bypass
+	}
+	if allow, ok := params["tlsAllowInvalidCertificates"].(bool); ok {
+		info.TLSAllowInvalidCerts = allow
+	}
+
+	// getCmdLineOpts: bind IP, authorization, audit log.
+	cmdResult := i.db.RunCommand(ctx, "admin", bson.D{{Key: "getCmdLineOpts", Value: 1}})
+	var cmdOpts bson.M
+	if err := cmdResult.Decode(&cmdOpts); err != nil {
+		// Permission denied is common — return what we have from getParameter.
+		return info, nil //nolint:nilerr // partial results are acceptable
+	}
+
+	parsed := toBsonM(cmdOpts["parsed"])
+
+	// net.bindIp / net.bindIpAll
+	if netSection := toBsonM(parsed["net"]); netSection != nil {
+		if bindIP, ok := netSection["bindIp"].(string); ok {
+			info.BindIP = bindIP
+		}
+		if bindAll, ok := netSection["bindIpAll"].(bool); ok && bindAll {
+			info.BindIP = "0.0.0.0"
+		}
+	}
+
+	// security.authorization
+	if secSection := toBsonM(parsed["security"]); secSection != nil {
+		if auth, ok := secSection["authorization"].(string); ok && auth == "enabled" {
+			info.AuthEnabled = true
+		}
+	}
+
+	// auditLog.destination
+	if auditSection := toBsonM(parsed["auditLog"]); auditSection != nil {
+		if dest, ok := auditSection["destination"].(string); ok && dest != "" {
+			info.AuditLogEnabled = true
+		}
+	}
+
+	return info, nil
+}
+
 // "2d", "hashed") which are stored as Direction=0 (non-directional).
 func bsonRawToKeyFields(raw bson.Raw) []KeyField {
 	elems, err := raw.Elements()

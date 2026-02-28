@@ -66,6 +66,12 @@ const (
 	FindingURIShortTimeout        FindingType = "URI_SHORT_TIMEOUT"
 	FindingURINoReadPreference    FindingType = "URI_NO_READ_PREFERENCE"
 	FindingURIDirectConnection    FindingType = "URI_DIRECT_CONNECTION"
+	FindingAuthDisabled           FindingType = "AUTH_DISABLED"
+	FindingBindAllInterfaces      FindingType = "BIND_ALL_INTERFACES"
+	FindingTLSDisabled            FindingType = "TLS_DISABLED"
+	FindingTLSAllowInvalidCerts   FindingType = "TLS_ALLOW_INVALID_CERTS"
+	FindingAuditLogDisabled       FindingType = "AUDIT_LOG_DISABLED"
+	FindingLocalhostException     FindingType = "LOCALHOST_EXCEPTION_ACTIVE"
 	FindingOK                     FindingType = "OK"
 )
 

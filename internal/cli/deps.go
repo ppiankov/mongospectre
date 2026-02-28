@@ -20,6 +20,7 @@ type inspector interface {
 	InspectUsers(ctx context.Context, dbName string) ([]mongoinspect.UserInfo, error)
 	ListDatabases(ctx context.Context, database string) ([]mongoinspect.DatabaseInfo, error)
 	SampleDocuments(ctx context.Context, database string, sampleSize int64) ([]mongoinspect.FieldSampleResult, error)
+	InspectSecurity(ctx context.Context) (mongoinspect.SecurityInfo, error)
 }
 
 type atlasClient interface {

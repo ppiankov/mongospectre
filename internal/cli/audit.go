@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ppiankov/mongospectre/internal/analyzer"
 	"github.com/ppiankov/mongospectre/internal/atlas"
@@ -27,6 +28,7 @@ func newAuditCmd() *cobra.Command {
 		interactive     bool
 		noInteractive   bool
 		lintURI         bool
+		security        bool
 	)
 
 	cmd := &cobra.Command{
@@ -189,6 +191,19 @@ func newAuditCmd() *cobra.Command {
 				}
 			}
 
+			if security {
+				if isAtlasURI(uri) {
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Security audit skipped: Atlas manages server security configuration.")
+				} else {
+					secInfo, secErr := inspector.InspectSecurity(ctx)
+					if secErr != nil {
+						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: security audit skipped: %v\n", secErr)
+					} else {
+						findings = append(findings, analyzer.AuditSecurity(secInfo)...)
+					}
+				}
+			}
+
 			atlasFindings := collectAtlasFindings(ctx, cmd, atlasOptions{
 				PublicKey:  atlasPublicKey,
 				PrivateKey: atlasPrivateKey,
@@ -270,6 +285,13 @@ func newAuditCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "launch interactive terminal UI (text format only)")
 	cmd.Flags().BoolVar(&noInteractive, "no-interactive", false, "force non-interactive output")
 	cmd.Flags().BoolVar(&lintURI, "lint-uri", true, "lint MongoDB URI for common misconfigurations")
+	cmd.Flags().BoolVar(&security, "security", false, "audit server security configuration (requires admin access)")
 
 	return cmd
+}
+
+// isAtlasURI returns true if the URI hostname indicates a MongoDB Atlas cluster.
+func isAtlasURI(rawURI string) bool {
+	host := reporter.HostFromURI(rawURI)
+	return strings.Contains(strings.ToLower(host), ".mongodb.net")
 }
