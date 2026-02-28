@@ -76,6 +76,12 @@ const (
 	FindingWriteHeavyOverIndexed  FindingType = "WRITE_HEAVY_OVER_INDEXED"
 	FindingSingleFieldRedundant   FindingType = "SINGLE_FIELD_REDUNDANT"
 	FindingLargeIndex             FindingType = "LARGE_INDEX"
+	FindingUnboundedArray         FindingType = "UNBOUNDED_ARRAY"
+	FindingDeepNesting            FindingType = "DEEP_NESTING"
+	FindingLargeDocument          FindingType = "LARGE_DOCUMENT"
+	FindingFieldNameCollision     FindingType = "FIELD_NAME_COLLISION"
+	FindingExcessiveFieldCount    FindingType = "EXCESSIVE_FIELD_COUNT"
+	FindingNumericFieldNames      FindingType = "NUMERIC_FIELD_NAMES"
 	FindingOK                     FindingType = "OK"
 )
 

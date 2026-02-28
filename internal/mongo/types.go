@@ -135,10 +135,13 @@ type SecurityInfo struct {
 
 // FieldSampleResult holds sampled field frequency data for one collection.
 type FieldSampleResult struct {
-	Database   string           `json:"database"`
-	Collection string           `json:"collection"`
-	SampleSize int64            `json:"sampleSize"`
-	Fields     []FieldFrequency `json:"fields"`
+	Database      string           `json:"database"`
+	Collection    string           `json:"collection"`
+	SampleSize    int64            `json:"sampleSize"`
+	Fields        []FieldFrequency `json:"fields"`
+	MaxDocSize    int64            `json:"maxDocSize,omitempty"`    // largest serialized doc in bytes
+	MaxFieldCount int              `json:"maxFieldCount,omitempty"` // most top-level fields in any doc
+	ArrayLengths  map[string]int64 `json:"arrayLengths,omitempty"`  // field path → max observed array length
 }
 
 // FieldFrequency tracks how often a field path appears and its BSON types.

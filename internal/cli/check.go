@@ -137,6 +137,7 @@ func newCheckCmd() *cobra.Command {
 				}
 				if len(samples) > 0 {
 					findings = append(findings, analyzer.DetectSchemaDrift(&scan, samples)...)
+					findings = append(findings, analyzer.DetectAntiPatterns(samples)...)
 				}
 			}
 

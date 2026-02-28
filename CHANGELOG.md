@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-02-28
+
+### Added
+
+- Data model anti-pattern detection with six new findings: `UNBOUNDED_ARRAY`, `DEEP_NESTING`, `LARGE_DOCUMENT`, `FIELD_NAME_COLLISION`, `EXCESSIVE_FIELD_COUNT`, `NUMERIC_FIELD_NAMES`
+- Per-document metrics in schema sampling: `MaxDocSize`, `MaxFieldCount`, `ArrayLengths`
+
 ## [0.2.11] - 2026-02-28
 
 ### Added

@@ -381,8 +381,27 @@ func (i *Inspector) SampleDocuments(ctx context.Context, database string, sample
 
 			// Build field frequency map: path -> type -> count.
 			fieldTypes := make(map[string]map[string]int64)
+			var maxDocSize int64
+			var maxFieldCount int
+			arrayLengths := make(map[string]int64)
+
 			for _, doc := range docs {
 				flattenDocument(doc, "", fieldTypes)
+
+				// Track max serialized document size.
+				if raw, marshalErr := bson.Marshal(doc); marshalErr == nil {
+					if int64(len(raw)) > maxDocSize {
+						maxDocSize = int64(len(raw))
+					}
+				}
+
+				// Track max top-level field count.
+				if len(doc) > maxFieldCount {
+					maxFieldCount = len(doc)
+				}
+
+				// Track max array lengths per field path.
+				walkArrayLengths(doc, "", arrayLengths)
 			}
 
 			fields := make([]FieldFrequency, 0, len(fieldTypes))
@@ -400,10 +419,13 @@ func (i *Inspector) SampleDocuments(ctx context.Context, database string, sample
 			sort.Slice(fields, func(a, b int) bool { return fields[a].Path < fields[b].Path })
 
 			results = append(results, FieldSampleResult{
-				Database:   db.Name,
-				Collection: specs[idx].Name,
-				SampleSize: int64(len(docs)),
-				Fields:     fields,
+				Database:      db.Name,
+				Collection:    specs[idx].Name,
+				SampleSize:    int64(len(docs)),
+				Fields:        fields,
+				MaxDocSize:    maxDocSize,
+				MaxFieldCount: maxFieldCount,
+				ArrayLengths:  arrayLengths,
 			})
 		}
 	}
@@ -458,6 +480,43 @@ func flattenArray(arr bson.A, path string, out map[string]map[string]int64) {
 				m[e.Key] = e.Value
 			}
 			flattenDocument(m, arrayPath, out)
+		}
+	}
+}
+
+// walkArrayLengths recursively walks a BSON document and tracks the maximum
+// observed array length for each field path.
+func walkArrayLengths(doc bson.M, prefix string, maxLengths map[string]int64) {
+	for key, val := range doc {
+		path := key
+		if prefix != "" {
+			path = prefix + "." + key
+		}
+		switch v := val.(type) {
+		case bson.A:
+			if int64(len(v)) > maxLengths[path] {
+				maxLengths[path] = int64(len(v))
+			}
+			for _, elem := range v {
+				if nested, ok := elem.(bson.M); ok {
+					walkArrayLengths(nested, path+"[]", maxLengths)
+				}
+				if nested, ok := elem.(bson.D); ok {
+					m := make(bson.M, len(nested))
+					for _, e := range nested {
+						m[e.Key] = e.Value
+					}
+					walkArrayLengths(m, path+"[]", maxLengths)
+				}
+			}
+		case bson.M:
+			walkArrayLengths(v, path, maxLengths)
+		case bson.D:
+			m := make(bson.M, len(v))
+			for _, e := range v {
+				m[e.Key] = e.Value
+			}
+			walkArrayLengths(m, path, maxLengths)
 		}
 	}
 }
