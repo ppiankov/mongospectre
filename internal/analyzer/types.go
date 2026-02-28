@@ -82,6 +82,12 @@ const (
 	FindingFieldNameCollision     FindingType = "FIELD_NAME_COLLISION"
 	FindingExcessiveFieldCount    FindingType = "EXCESSIVE_FIELD_COUNT"
 	FindingNumericFieldNames      FindingType = "NUMERIC_FIELD_NAMES"
+	FindingSingleMemberReplSet    FindingType = "SINGLE_MEMBER_REPLSET"
+	FindingEvenMemberCount        FindingType = "EVEN_MEMBER_COUNT"
+	FindingMemberUnhealthy        FindingType = "MEMBER_UNHEALTHY"
+	FindingOplogSmall             FindingType = "OPLOG_SMALL"
+	FindingNoHiddenMember         FindingType = "NO_HIDDEN_MEMBER"
+	FindingPriorityZeroMajority   FindingType = "PRIORITY_ZERO_MAJORITY"
 	FindingOK                     FindingType = "OK"
 )
 

@@ -1261,6 +1261,143 @@ func (i *Inspector) InspectSecurity(ctx context.Context) (SecurityInfo, error) {
 	return info, nil
 }
 
+// InspectReplicaSet queries replSetGetStatus, replSetGetConfig, and oplog
+// metadata to build a ReplicaSetInfo. Returns empty info for standalone
+// deployments. Returns partial results on permission errors.
+func (i *Inspector) InspectReplicaSet(ctx context.Context) (ReplicaSetInfo, error) {
+	var info ReplicaSetInfo
+
+	// replSetGetStatus: member states and health.
+	statusResult := i.db.RunCommand(ctx, "admin", bson.D{{Key: "replSetGetStatus", Value: 1}})
+	var status bson.M
+	if err := statusResult.Decode(&status); err != nil {
+		// "not running with --replSet" or code 76 → standalone.
+		errStr := err.Error()
+		if strings.Contains(errStr, "not running with --replSet") ||
+			strings.Contains(errStr, "NoReplicationEnabled") {
+			return info, nil
+		}
+		return info, fmt.Errorf("replSetGetStatus: %w", err)
+	}
+
+	info.Name = toString(status["set"])
+
+	if members, ok := status["members"].(bson.A); ok {
+		for _, m := range members {
+			mDoc := toBsonM(m)
+			if mDoc == nil {
+				continue
+			}
+			member := ReplicaSetMember{
+				Name:     toString(mDoc["name"]),
+				StateStr: toString(mDoc["stateStr"]),
+				Health:   int(toInt64(mDoc["health"])),
+			}
+			info.Members = append(info.Members, member)
+		}
+	}
+
+	// replSetGetConfig: priority, hidden, votes.
+	configResult := i.db.RunCommand(ctx, "admin", bson.D{{Key: "replSetGetConfig", Value: 1}})
+	var configDoc bson.M
+	if err := configResult.Decode(&configDoc); err == nil {
+		cfg := toBsonM(configDoc["config"])
+		if cfgMembers, ok := cfg["members"].(bson.A); ok {
+			// Build host→index map from status members for merging.
+			hostIdx := make(map[string]int, len(info.Members))
+			for idx, m := range info.Members {
+				hostIdx[m.Name] = idx
+			}
+			for _, cm := range cfgMembers {
+				cmDoc := toBsonM(cm)
+				if cmDoc == nil {
+					continue
+				}
+				host := toString(cmDoc["host"])
+				if idx, found := hostIdx[host]; found {
+					info.Members[idx].Priority = toFloat64(cmDoc["priority"])
+					info.Members[idx].Hidden = toBool(cmDoc["hidden"])
+					info.Members[idx].Votes = int(toInt64(cmDoc["votes"]))
+				}
+			}
+		}
+	}
+	// Permission denied on replSetGetConfig is acceptable — partial results.
+
+	// Oplog size: collStats on local.oplog.rs.
+	oplogStats := i.db.RunCommand(ctx, "local", bson.D{{Key: "collStats", Value: "oplog.rs"}})
+	var oplogRaw bson.M
+	if err := oplogStats.Decode(&oplogRaw); err == nil {
+		maxSize := toInt64(oplogRaw["maxSize"])
+		if maxSize > 0 {
+			info.OplogSizeMB = maxSize / (1024 * 1024)
+		}
+	}
+
+	// Oplog window: difference between first and last oplog entry timestamps.
+	firstTS, lastTS := i.oplogTimestamps(ctx)
+	if !firstTS.IsZero() && !lastTS.IsZero() && lastTS.After(firstTS) {
+		info.OplogWindowHours = lastTS.Sub(firstTS).Hours()
+	}
+
+	return info, nil
+}
+
+// oplogTimestamps returns the first and last oplog.rs entry wall-clock times.
+func (i *Inspector) oplogTimestamps(ctx context.Context) (first, last time.Time) {
+	// First entry (natural order).
+	firstCursor, err := i.db.Aggregate(ctx, "local", "oplog.rs", bson.A{
+		bson.D{{Key: "$sort", Value: bson.D{{Key: "$natural", Value: 1}}}},
+		bson.D{{Key: "$limit", Value: 1}},
+		bson.D{{Key: "$project", Value: bson.D{{Key: "wall", Value: 1}}}},
+	})
+	if err == nil {
+		defer func() { _ = firstCursor.Close(ctx) }()
+		if firstCursor.Next(ctx) {
+			var doc bson.M
+			if decErr := firstCursor.Decode(&doc); decErr == nil {
+				if w, ok := doc["wall"].(time.Time); ok {
+					first = w
+				}
+			}
+		}
+	}
+
+	// Last entry (reverse natural order).
+	lastCursor, err := i.db.Aggregate(ctx, "local", "oplog.rs", bson.A{
+		bson.D{{Key: "$sort", Value: bson.D{{Key: "$natural", Value: -1}}}},
+		bson.D{{Key: "$limit", Value: 1}},
+		bson.D{{Key: "$project", Value: bson.D{{Key: "wall", Value: 1}}}},
+	})
+	if err == nil {
+		defer func() { _ = lastCursor.Close(ctx) }()
+		if lastCursor.Next(ctx) {
+			var doc bson.M
+			if decErr := lastCursor.Decode(&doc); decErr == nil {
+				if w, ok := doc["wall"].(time.Time); ok {
+					last = w
+				}
+			}
+		}
+	}
+
+	return first, last
+}
+
+// toFloat64 extracts a float64 from various BSON numeric types.
+func toFloat64(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case int32:
+		return float64(n)
+	case int64:
+		return float64(n)
+	default:
+		return 0
+	}
+}
+
 // "2d", "hashed") which are stored as Direction=0 (non-directional).
 func bsonRawToKeyFields(raw bson.Raw) []KeyField {
 	elems, err := raw.Elements()

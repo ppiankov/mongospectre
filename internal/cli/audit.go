@@ -29,6 +29,7 @@ func newAuditCmd() *cobra.Command {
 		noInteractive   bool
 		lintURI         bool
 		security        bool
+		replset         bool
 	)
 
 	cmd := &cobra.Command{
@@ -204,6 +205,22 @@ func newAuditCmd() *cobra.Command {
 				}
 			}
 
+			if replset {
+				if isAtlasURI(uri) {
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Replica set audit skipped: Atlas manages replica set topology.")
+				} else {
+					rsInfo, rsErr := inspector.InspectReplicaSet(ctx)
+					switch {
+					case rsErr != nil:
+						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: replica set audit skipped: %v\n", rsErr)
+					case rsInfo.Name != "":
+						findings = append(findings, analyzer.AuditReplicaSet(rsInfo)...)
+					default:
+						_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Replica set audit skipped: standalone deployment.")
+					}
+				}
+			}
+
 			atlasFindings := collectAtlasFindings(ctx, cmd, atlasOptions{
 				PublicKey:  atlasPublicKey,
 				PrivateKey: atlasPrivateKey,
@@ -286,6 +303,7 @@ func newAuditCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noInteractive, "no-interactive", false, "force non-interactive output")
 	cmd.Flags().BoolVar(&lintURI, "lint-uri", true, "lint MongoDB URI for common misconfigurations")
 	cmd.Flags().BoolVar(&security, "security", false, "audit server security configuration (requires admin access)")
+	cmd.Flags().BoolVar(&replset, "replset", false, "audit replica set configuration (requires admin access)")
 
 	return cmd
 }

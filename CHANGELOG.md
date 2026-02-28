@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-02-28
+
+### Added
+
+- Replica set configuration audit (`--replset` flag on `audit` command)
+- `InspectReplicaSet` inspector method using `replSetGetStatus`, `replSetGetConfig`, and oplog metadata
+- Six new findings: `SINGLE_MEMBER_REPLSET`, `EVEN_MEMBER_COUNT`, `MEMBER_UNHEALTHY`, `OPLOG_SMALL`, `NO_HIDDEN_MEMBER`, `PRIORITY_ZERO_MAJORITY`
+- Atlas auto-skip: replica set audit skipped gracefully on Atlas clusters (topology managed by Atlas)
+- Standalone auto-skip: replica set audit skipped when deployment is not a replica set
+
 ## [0.2.12] - 2026-02-28
 
 ### Added

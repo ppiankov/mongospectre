@@ -133,6 +133,24 @@ type SecurityInfo struct {
 	LocalhostAuthBypass  bool   `json:"localhostAuthBypass"`
 }
 
+// ReplicaSetInfo holds replica set topology and oplog metadata.
+type ReplicaSetInfo struct {
+	Name             string             `json:"name"`
+	Members          []ReplicaSetMember `json:"members"`
+	OplogSizeMB      int64              `json:"oplogSizeMB"`
+	OplogWindowHours float64            `json:"oplogWindowHours"`
+}
+
+// ReplicaSetMember describes a single member of a replica set.
+type ReplicaSetMember struct {
+	Name     string  `json:"name"`     // host:port
+	StateStr string  `json:"stateStr"` // PRIMARY, SECONDARY, RECOVERING, etc.
+	Health   int     `json:"health"`   // 1 = up, 0 = down
+	Priority float64 `json:"priority"`
+	Hidden   bool    `json:"hidden"`
+	Votes    int     `json:"votes"`
+}
+
 // FieldSampleResult holds sampled field frequency data for one collection.
 type FieldSampleResult struct {
 	Database      string           `json:"database"`

@@ -33,16 +33,19 @@ type fakeInspector struct {
 	sampleDocsErr    error
 	securityRes      mongoinspect.SecurityInfo
 	securityErr      error
+	replsetRes       mongoinspect.ReplicaSetInfo
+	replsetErr       error
 	closeErr         error
 
-	inspectCalls         []string
-	listDatabasesCalls   []string
-	inspectUsersCalls    []string
-	profilerCalls        []profilerCall
-	sampleDocsCalls      []sampleDocsCall
-	inspectShardingCalls int
-	inspectSecurityCalls int
-	closeCalls           int
+	inspectCalls           []string
+	listDatabasesCalls     []string
+	inspectUsersCalls      []string
+	profilerCalls          []profilerCall
+	sampleDocsCalls        []sampleDocsCall
+	inspectShardingCalls   int
+	inspectSecurityCalls   int
+	inspectReplicaSetCalls int
+	closeCalls             int
 }
 
 type profilerCall struct {
@@ -154,6 +157,14 @@ func (f *fakeInspector) InspectSecurity(context.Context) (mongoinspect.SecurityI
 		return mongoinspect.SecurityInfo{}, f.securityErr
 	}
 	return f.securityRes, nil
+}
+
+func (f *fakeInspector) InspectReplicaSet(context.Context) (mongoinspect.ReplicaSetInfo, error) {
+	f.inspectReplicaSetCalls++
+	if f.replsetErr != nil {
+		return mongoinspect.ReplicaSetInfo{}, f.replsetErr
+	}
+	return f.replsetRes, nil
 }
 
 func (f *fakeInspector) SampleDocuments(_ context.Context, database string, sampleSize int64) ([]mongoinspect.FieldSampleResult, error) {
