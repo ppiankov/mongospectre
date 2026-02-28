@@ -17,15 +17,16 @@ type DatabaseInfo struct {
 
 // CollectionInfo describes a MongoDB collection with stats.
 type CollectionInfo struct {
-	Name        string         `json:"name"`
-	Database    string         `json:"database"`
-	Type        string         `json:"type"` // "collection" or "view"
-	DocCount    int64          `json:"docCount"`
-	Size        int64          `json:"size"`        // uncompressed data size in bytes
-	AvgObjSize  int64          `json:"avgObjSize"`  // average document size in bytes
-	StorageSize int64          `json:"storageSize"` // allocated storage in bytes
-	Indexes     []IndexInfo    `json:"indexes"`
-	Validator   *ValidatorInfo `json:"validator,omitempty"`
+	Name           string         `json:"name"`
+	Database       string         `json:"database"`
+	Type           string         `json:"type"` // "collection" or "view"
+	DocCount       int64          `json:"docCount"`
+	Size           int64          `json:"size"`           // uncompressed data size in bytes
+	AvgObjSize     int64          `json:"avgObjSize"`     // average document size in bytes
+	StorageSize    int64          `json:"storageSize"`    // allocated storage in bytes
+	TotalIndexSize int64          `json:"totalIndexSize"` // total size of all indexes in bytes
+	Indexes        []IndexInfo    `json:"indexes"`
+	Validator      *ValidatorInfo `json:"validator,omitempty"`
 }
 
 // ValidatorInfo describes collection-level JSON Schema validation settings.
@@ -61,7 +62,8 @@ type IndexInfo struct {
 	Key    []KeyField  `json:"key"`
 	Unique bool        `json:"unique,omitempty"`
 	Sparse bool        `json:"sparse,omitempty"`
-	TTL    *int32      `json:"ttl,omitempty"` // TTL seconds, nil if not a TTL index
+	TTL    *int32      `json:"ttl,omitempty"`  // TTL seconds, nil if not a TTL index
+	Size   int64       `json:"size,omitempty"` // index size in bytes from collStats.indexSizes
 	Stats  *IndexStats `json:"stats,omitempty"`
 }
 

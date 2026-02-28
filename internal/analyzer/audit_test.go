@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"fmt"
 	"testing"
 
 	mongoinspect "github.com/ppiankov/mongospectre/internal/mongo"
@@ -252,6 +253,147 @@ func TestAudit_Integration(t *testing.T) {
 	}
 	if !hasUnused {
 		t.Error("expected UNUSED_COLLECTION for empty_coll")
+	}
+}
+
+func TestDetectIndexBloat(t *testing.T) {
+	coll := mongoinspect.CollectionInfo{
+		Name:           "bloated",
+		Database:       "db",
+		Size:           100 * 1024 * 1024, // 100 MB data
+		TotalIndexSize: 500 * 1024 * 1024, // 500 MB indexes
+	}
+	findings := detectIndexBloat(&coll)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Type != FindingIndexBloat {
+		t.Errorf("expected type %s, got %s", FindingIndexBloat, findings[0].Type)
+	}
+	if findings[0].Severity != SeverityMedium {
+		t.Errorf("severity = %s, want medium", findings[0].Severity)
+	}
+}
+
+func TestDetectIndexBloat_NoData(t *testing.T) {
+	coll := mongoinspect.CollectionInfo{
+		Name:           "empty",
+		Database:       "db",
+		Size:           0,
+		TotalIndexSize: 4096,
+	}
+	if findings := detectIndexBloat(&coll); len(findings) != 0 {
+		t.Errorf("expected 0 findings for empty collection, got %d", len(findings))
+	}
+}
+
+func TestDetectWriteHeavyOverIndexed(t *testing.T) {
+	indexes := make([]mongoinspect.IndexInfo, 11)
+	for i := range indexes {
+		indexes[i] = mongoinspect.IndexInfo{
+			Name: fmt.Sprintf("idx_%d", i),
+			Key:  kf(fmt.Sprintf("field%d", i)),
+		}
+	}
+	coll := mongoinspect.CollectionInfo{
+		Name:     "over_indexed",
+		Database: "db",
+		Indexes:  indexes,
+	}
+	findings := detectWriteHeavyOverIndexed(&coll)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Type != FindingWriteHeavyOverIndexed {
+		t.Errorf("expected type %s, got %s", FindingWriteHeavyOverIndexed, findings[0].Type)
+	}
+}
+
+func TestDetectWriteHeavyOverIndexed_Under(t *testing.T) {
+	indexes := make([]mongoinspect.IndexInfo, 10)
+	for i := range indexes {
+		indexes[i] = mongoinspect.IndexInfo{
+			Name: fmt.Sprintf("idx_%d", i),
+			Key:  kf(fmt.Sprintf("field%d", i)),
+		}
+	}
+	coll := mongoinspect.CollectionInfo{
+		Name:     "normal",
+		Database: "db",
+		Indexes:  indexes,
+	}
+	if findings := detectWriteHeavyOverIndexed(&coll); len(findings) != 0 {
+		t.Errorf("expected 0 findings for 10 indexes, got %d", len(findings))
+	}
+}
+
+func TestDetectSingleFieldRedundant(t *testing.T) {
+	coll := mongoinspect.CollectionInfo{
+		Name:     "orders",
+		Database: "db",
+		Indexes: []mongoinspect.IndexInfo{
+			{Name: "_id_", Key: kf("_id")},
+			{Name: "status_1", Key: kf("status")},
+			{Name: "status_1_date_1", Key: kf("status", "date")},
+		},
+	}
+	findings := detectSingleFieldRedundant(&coll)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Type != FindingSingleFieldRedundant {
+		t.Errorf("expected type %s, got %s", FindingSingleFieldRedundant, findings[0].Type)
+	}
+	if findings[0].Index != "status_1" {
+		t.Errorf("expected index status_1, got %s", findings[0].Index)
+	}
+}
+
+func TestDetectSingleFieldRedundant_NotCovered(t *testing.T) {
+	coll := mongoinspect.CollectionInfo{
+		Name:     "products",
+		Database: "db",
+		Indexes: []mongoinspect.IndexInfo{
+			{Name: "_id_", Key: kf("_id")},
+			{Name: "sku_1", Key: kf("sku")},
+			{Name: "category_1_name_1", Key: kf("category", "name")},
+		},
+	}
+	if findings := detectSingleFieldRedundant(&coll); len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d", len(findings))
+	}
+}
+
+func TestDetectLargeIndex(t *testing.T) {
+	coll := mongoinspect.CollectionInfo{
+		Name:     "logs",
+		Database: "db",
+		Indexes: []mongoinspect.IndexInfo{
+			{Name: "ts_1", Key: kf("ts"), Size: 2 * 1024 * 1024 * 1024}, // 2 GB
+		},
+	}
+	findings := detectLargeIndex(&coll)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Type != FindingLargeIndex {
+		t.Errorf("expected type %s, got %s", FindingLargeIndex, findings[0].Type)
+	}
+	if findings[0].Index != "ts_1" {
+		t.Errorf("expected index ts_1, got %s", findings[0].Index)
+	}
+}
+
+func TestDetectLargeIndex_Under(t *testing.T) {
+	coll := mongoinspect.CollectionInfo{
+		Name:     "small",
+		Database: "db",
+		Indexes: []mongoinspect.IndexInfo{
+			{Name: "idx_1", Key: kf("field"), Size: 500 * 1024 * 1024}, // 500 MB
+		},
+	}
+	if findings := detectLargeIndex(&coll); len(findings) != 0 {
+		t.Errorf("expected 0 findings for 500MB index, got %d", len(findings))
 	}
 }
 

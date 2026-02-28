@@ -72,6 +72,10 @@ const (
 	FindingTLSAllowInvalidCerts   FindingType = "TLS_ALLOW_INVALID_CERTS"
 	FindingAuditLogDisabled       FindingType = "AUDIT_LOG_DISABLED"
 	FindingLocalhostException     FindingType = "LOCALHOST_EXCEPTION_ACTIVE"
+	FindingIndexBloat             FindingType = "INDEX_BLOAT"
+	FindingWriteHeavyOverIndexed  FindingType = "WRITE_HEAVY_OVER_INDEXED"
+	FindingSingleFieldRedundant   FindingType = "SINGLE_FIELD_REDUNDANT"
+	FindingLargeIndex             FindingType = "LARGE_INDEX"
 	FindingOK                     FindingType = "OK"
 )
 

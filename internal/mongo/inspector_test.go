@@ -477,7 +477,7 @@ func TestGetCollectionStats(t *testing.T) {
 	})
 	mc := &mockClient{runCmdResult: raw}
 	insp := &Inspector{db: mc}
-	info, err := insp.GetCollectionStats(context.TODO(), "app", "users")
+	info, _, err := insp.GetCollectionStats(context.TODO(), "app", "users")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -501,12 +501,48 @@ func TestGetCollectionStats(t *testing.T) {
 func TestGetCollectionStats_Error(t *testing.T) {
 	mc := &mockClient{runCmdErr: errors.New("not found")}
 	insp := &Inspector{db: mc}
-	info, err := insp.GetCollectionStats(context.TODO(), "app", "missing")
+	info, _, err := insp.GetCollectionStats(context.TODO(), "app", "missing")
 	if err == nil {
 		t.Fatal("expected error")
 	}
 	if info.Name != "missing" || info.Database != "app" {
 		t.Errorf("should return partial info on error: %+v", info)
+	}
+}
+
+func TestGetCollectionStats_IndexSizes(t *testing.T) {
+	raw, _ := bson.Marshal(bson.M{
+		"count":          int64(500),
+		"size":           int64(10000),
+		"avgObjSize":     int64(20),
+		"storageSize":    int64(12000),
+		"totalIndexSize": int64(8000),
+		"indexSizes": bson.M{
+			"_id_":     int64(4000),
+			"email_1":  int64(3000),
+			"status_1": int64(1000),
+		},
+	})
+	mc := &mockClient{runCmdResult: raw}
+	insp := &Inspector{db: mc}
+	info, indexSizes, err := insp.GetCollectionStats(context.TODO(), "app", "users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.TotalIndexSize != 8000 {
+		t.Errorf("totalIndexSize = %d, want 8000", info.TotalIndexSize)
+	}
+	if len(indexSizes) != 3 {
+		t.Fatalf("expected 3 index sizes, got %d", len(indexSizes))
+	}
+	if indexSizes["_id_"] != 4000 {
+		t.Errorf("indexSizes[_id_] = %d, want 4000", indexSizes["_id_"])
+	}
+	if indexSizes["email_1"] != 3000 {
+		t.Errorf("indexSizes[email_1] = %d, want 3000", indexSizes["email_1"])
+	}
+	if indexSizes["status_1"] != 1000 {
+		t.Errorf("indexSizes[status_1] = %d, want 1000", indexSizes["status_1"])
 	}
 }
 

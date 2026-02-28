@@ -16,6 +16,12 @@ const (
 
 	// Common timestamp field names that suggest a TTL index might be needed.
 	timestampFieldHint = "created,updated,timestamp,expires,expiry,ttl,lastModified,createdAt,updatedAt,expiresAt"
+
+	// Collections with more indexes than this get flagged for write amplification.
+	maxIndexesPerCollection = 10
+
+	// Individual indexes larger than this (bytes) get flagged.
+	largeIndexThreshold int64 = 1 << 30 // 1 GB
 )
 
 // Audit runs all cluster-only detections against the given collections.
@@ -28,6 +34,10 @@ func Audit(collections []mongoinspect.CollectionInfo) []Finding {
 		findings = append(findings, detectDuplicateIndexes(&c)...)
 		findings = append(findings, detectOversizedCollection(&c)...)
 		findings = append(findings, detectMissingTTL(&c)...)
+		findings = append(findings, detectIndexBloat(&c)...)
+		findings = append(findings, detectWriteHeavyOverIndexed(&c)...)
+		findings = append(findings, detectSingleFieldRedundant(&c)...)
+		findings = append(findings, detectLargeIndex(&c)...)
 	}
 	return findings
 }
@@ -164,6 +174,84 @@ func detectMissingTTL(c *mongoinspect.CollectionInfo) []Finding {
 				})
 			}
 		}
+	}
+	return findings
+}
+
+// detectIndexBloat flags collections where total index size exceeds data size.
+func detectIndexBloat(c *mongoinspect.CollectionInfo) []Finding {
+	if c.Size == 0 || c.TotalIndexSize <= c.Size {
+		return nil
+	}
+	dataMB := float64(c.Size) / (1024 * 1024)
+	idxMB := float64(c.TotalIndexSize) / (1024 * 1024)
+	ratio := float64(c.TotalIndexSize) / float64(c.Size)
+	return []Finding{{
+		Type:       FindingIndexBloat,
+		Severity:   SeverityMedium,
+		Database:   c.Database,
+		Collection: c.Name,
+		Message:    fmt.Sprintf("total index size (%.1f MB) exceeds data size (%.1f MB) — ratio %.1f:1", idxMB, dataMB, ratio),
+	}}
+}
+
+// detectWriteHeavyOverIndexed flags collections with too many indexes.
+func detectWriteHeavyOverIndexed(c *mongoinspect.CollectionInfo) []Finding {
+	if len(c.Indexes) <= maxIndexesPerCollection {
+		return nil
+	}
+	return []Finding{{
+		Type:       FindingWriteHeavyOverIndexed,
+		Severity:   SeverityMedium,
+		Database:   c.Database,
+		Collection: c.Name,
+		Message:    fmt.Sprintf("collection has %d indexes — every write updates all of them", len(c.Indexes)),
+	}}
+}
+
+// detectSingleFieldRedundant flags single-field indexes covered by a compound index.
+func detectSingleFieldRedundant(c *mongoinspect.CollectionInfo) []Finding {
+	var findings []Finding
+	for _, single := range c.Indexes {
+		if single.Name == "_id_" || len(single.Key) != 1 {
+			continue
+		}
+		for _, compound := range c.Indexes {
+			if len(compound.Key) <= 1 {
+				continue
+			}
+			if isKeyPrefix(single.Key, compound.Key) {
+				findings = append(findings, Finding{
+					Type:       FindingSingleFieldRedundant,
+					Severity:   SeverityLow,
+					Database:   c.Database,
+					Collection: c.Name,
+					Index:      single.Name,
+					Message:    fmt.Sprintf("single-field index %q is covered by compound index %q", single.Name, compound.Name),
+				})
+				break
+			}
+		}
+	}
+	return findings
+}
+
+// detectLargeIndex flags individual indexes exceeding the size threshold.
+func detectLargeIndex(c *mongoinspect.CollectionInfo) []Finding {
+	var findings []Finding
+	for _, idx := range c.Indexes {
+		if idx.Size < largeIndexThreshold {
+			continue
+		}
+		gb := float64(idx.Size) / (1024 * 1024 * 1024)
+		findings = append(findings, Finding{
+			Type:       FindingLargeIndex,
+			Severity:   SeverityLow,
+			Database:   c.Database,
+			Collection: c.Name,
+			Index:      idx.Name,
+			Message:    fmt.Sprintf("index %q is %.1f GB — review whether this index is necessary", idx.Name, gb),
+		})
 	}
 	return findings
 }

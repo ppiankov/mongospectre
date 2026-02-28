@@ -169,21 +169,35 @@ func (i *Inspector) GetValidators(ctx context.Context, database string) ([]Valid
 }
 
 // GetCollectionStats populates size/count stats for a collection.
-func (i *Inspector) GetCollectionStats(ctx context.Context, dbName, collName string) (CollectionInfo, error) {
+// Returns the collection info and a map of index name → size in bytes.
+func (i *Inspector) GetCollectionStats(ctx context.Context, dbName, collName string) (CollectionInfo, map[string]int64, error) {
 	result := i.db.RunCommand(ctx, dbName, bson.D{{Key: "collStats", Value: collName}})
 	var raw bson.M
 	if err := result.Decode(&raw); err != nil {
-		return CollectionInfo{Name: collName, Database: dbName}, fmt.Errorf("collStats %s.%s: %w", dbName, collName, err)
+		return CollectionInfo{Name: collName, Database: dbName}, nil, fmt.Errorf("collStats %s.%s: %w", dbName, collName, err)
+	}
+
+	indexSizes := make(map[string]int64)
+	switch rawSizes := raw["indexSizes"].(type) {
+	case bson.M:
+		for name, size := range rawSizes {
+			indexSizes[name] = toInt64(size)
+		}
+	case bson.D:
+		for _, e := range rawSizes {
+			indexSizes[e.Key] = toInt64(e.Value)
+		}
 	}
 
 	return CollectionInfo{
-		Name:        collName,
-		Database:    dbName,
-		DocCount:    toInt64(raw["count"]),
-		Size:        toInt64(raw["size"]),
-		AvgObjSize:  toInt64(raw["avgObjSize"]),
-		StorageSize: toInt64(raw["storageSize"]),
-	}, nil
+		Name:           collName,
+		Database:       dbName,
+		DocCount:       toInt64(raw["count"]),
+		Size:           toInt64(raw["size"]),
+		AvgObjSize:     toInt64(raw["avgObjSize"]),
+		StorageSize:    toInt64(raw["storageSize"]),
+		TotalIndexSize: toInt64(raw["totalIndexSize"]),
+	}, indexSizes, nil
 }
 
 // GetIndexes returns index definitions for a collection.
@@ -502,12 +516,13 @@ func (i *Inspector) Inspect(ctx context.Context, database string) ([]CollectionI
 				continue
 			}
 
-			stats, statsErr := i.GetCollectionStats(ctx, db.Name, coll.Name)
+			stats, indexSizes, statsErr := i.GetCollectionStats(ctx, db.Name, coll.Name)
 			if statsErr == nil {
 				coll.DocCount = stats.DocCount
 				coll.Size = stats.Size
 				coll.AvgObjSize = stats.AvgObjSize
 				coll.StorageSize = stats.StorageSize
+				coll.TotalIndexSize = stats.TotalIndexSize
 			}
 
 			indexes, idxErr := i.GetIndexes(ctx, db.Name, coll.Name)
@@ -516,6 +531,9 @@ func (i *Inspector) Inspect(ctx context.Context, database string) ([]CollectionI
 				for j := range indexes {
 					if s, ok := idxStats[indexes[j].Name]; ok {
 						indexes[j].Stats = &s
+					}
+					if size, ok := indexSizes[indexes[j].Name]; ok {
+						indexes[j].Size = size
 					}
 				}
 				coll.Indexes = indexes

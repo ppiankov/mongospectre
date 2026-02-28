@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-02-28
+
+### Added
+
+- Index efficiency analysis with four new findings: `INDEX_BLOAT`, `WRITE_HEAVY_OVER_INDEXED`, `SINGLE_FIELD_REDUNDANT`, `LARGE_INDEX`
+- `TotalIndexSize` and per-index `Size` fields extracted from `collStats`
+
 ## [0.2.10] - 2026-02-28
 
 ### Added
